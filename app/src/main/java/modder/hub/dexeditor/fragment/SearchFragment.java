@@ -1243,7 +1243,8 @@ public class SearchFragment extends Fragment {
                     if (progressDialog != null && progressDialog.isShowing()) {
                         progressDialog.setMax(total);
                         progressDialog.setProgress(processed);
-                        progressDialog.setMessage(getString(R.string.hc_found_n, foundCount.get()));
+                        SearchFragment frag = fragmentRef.get();
+                        if (frag != null) progressDialog.setMessage(frag.getString(R.string.hc_found_n, foundCount.get()));
                     }
                 });
         }
@@ -2244,7 +2245,8 @@ public class SearchFragment extends Fragment {
                 if (progressDialog != null && progressDialog.isShowing()) {
                     progressDialog.setMax(total);
                     progressDialog.setProgress(processed);
-                    progressDialog.setMessage(getString(R.string.hc_found_n, foundCount.get()));
+                    SearchFragment frag = fragmentRef.get();
+                    if (frag != null) progressDialog.setMessage(frag.getString(R.string.hc_found_n, foundCount.get()));
                 }
             });
         }
