@@ -1495,7 +1495,7 @@ public class ApkOverlayTools {
                 EditText cornerInput = new EditText(context);
                 cornerInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
                 cornerInput.setText(w.btnCornerRadiusDp > 0 ? String.valueOf(w.btnCornerRadiusDp) : "");
-                cornerInput.setHint("Corner dp");
+                cornerInput.setHint(R.string.hc_corner_dp);
                 btnShapeRow.addView(UiFields.wrap(context, cornerInput, "Corner dp", 0),
                         new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 cornerInput.addTextChangedListener(new TextWatcher() {
@@ -1516,7 +1516,7 @@ public class ApkOverlayTools {
                 EditText padInput = new EditText(context);
                 padInput.setInputType(InputType.TYPE_CLASS_NUMBER);
                 padInput.setText(w.btnPaddingDp > 0 ? String.valueOf(w.btnPaddingDp) : "");
-                padInput.setHint("Pad dp");
+                padInput.setHint(R.string.hc_pad_dp);
                 btnShapeRow.addView(UiFields.wrap(context, padInput, "Padding dp", 0),
                         new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 padInput.addTextChangedListener(new TextWatcher() {
@@ -1540,7 +1540,7 @@ public class ApkOverlayTools {
                 EditText borderInput = new EditText(context);
                 borderInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
                 borderInput.setText(w.btnBorderWidthDp > 0 ? String.valueOf(w.btnBorderWidthDp) : "");
-                borderInput.setHint("Border dp");
+                borderInput.setHint(R.string.hc_border_dp);
                 btnBorderRow.addView(UiFields.wrap(context, borderInput, "Border dp", 0),
                         new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 borderInput.addTextChangedListener(new TextWatcher() {
@@ -1641,7 +1641,7 @@ public class ApkOverlayTools {
                     EditText speedInput = new EditText(context);
                     speedInput.setInputType(InputType.TYPE_CLASS_NUMBER);
                     if (w.btnAnimSpeedMs > 0) speedInput.setText(String.valueOf(w.btnAnimSpeedMs));
-                    speedInput.setHint("Speed ms");
+                    speedInput.setHint(R.string.hc_speed_ms);
                     speedInput.addTextChangedListener(new TextWatcher() {
                         public void beforeTextChanged(CharSequence s, int a, int b, int c) {
                         }

@@ -60,6 +60,7 @@
     </queries>
 
         <application
+        android:supportsRtl="true"
             android:localeConfig="@xml/locales_config"
             android:requestLegacyExternalStorage="true"
            android:enableOnBackInvokedCallback="false"

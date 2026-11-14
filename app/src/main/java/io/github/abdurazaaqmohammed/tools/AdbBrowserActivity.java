@@ -73,7 +73,7 @@ public class AdbBrowserActivity extends BaseActivity {
         root.setOrientation(LinearLayout.VERTICAL);
 
         toolbar = new MaterialToolbar(this);
-        toolbar.setTitle("ADB Browser");
+        toolbar.setTitle(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_browser);
         toolbar.setNavigationIcon(R.drawable.abc_ic_ab_back_material);
         toolbar.setNavigationOnClickListener(v -> finish());
         root.addView(toolbar, new LinearLayout.LayoutParams(
@@ -85,7 +85,7 @@ public class AdbBrowserActivity extends BaseActivity {
         controls.setPadding(pad, pad, pad, pad);
         pathInput = new EditText(this);
         pathInput.setSingleLine(true);
-        pathInput.setHint("path, e.g. /data");
+        pathInput.setHint(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_path_hint);
         pathInput.setText(START_PATH);
         pathInput.setTextSize(14);
         controls.addView(pathInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -120,7 +120,7 @@ public class AdbBrowserActivity extends BaseActivity {
     /** Open the ADB session once, then list the starting path. */
     private void connectAndLoad(String path) {
         final int seq = ++requestSeq;
-        status.setText("Connecting to ADB server on 127.0.0.1:5037…");
+        status.setText(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_connecting);
         io.execute(() -> {
             try {
                 if (service == null) {
@@ -144,7 +144,7 @@ public class AdbBrowserActivity extends BaseActivity {
         }
         final String target = path;
         final int seq = ++requestSeq;
-        status.setText("Listing " + target + "…");
+        status.setText(getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_listing, target));
         io.execute(() -> {
             try {
                 if (service == null) {
@@ -165,7 +165,7 @@ public class AdbBrowserActivity extends BaseActivity {
                 return; // a newer navigation superseded this reply
             }
             if (error != null) {
-                status.setText("Error at " + path + ": " + friendly(error));
+                status.setText(getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_error_at, path, friendly(error)));
                 return;
             }
             currentPath = path;

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="subtitle_connectivity">معلومات الشبكة وWi-Fi</string>
+    <string name="subtitle_network">مركز الاتصال ومولد QR</string>
+    <string name="subtitle_qrgen">نص ورابط وWi-Fi إلى QR</string>
+    <string name="title_connectivity">مركز الاتصال</string>
+    <string name="title_network">أدوات الشبكة</string>
+    <string name="title_qrgen">مولد QR</string>
+</resources>

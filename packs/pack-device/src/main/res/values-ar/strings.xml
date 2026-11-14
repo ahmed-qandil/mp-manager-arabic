@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="subtitle_clock">ساعة إيقاف ومؤقت وساعة قابلة للتخصيص</string>
+    <string name="subtitle_compass">تحديد الاتجاه المغناطيسي</string>
+    <string name="subtitle_devicehub">البطارية والمعالج والمستشعرات والتخزين</string>
+    <string name="subtitle_level">فحص استواء الأسطح</string>
+    <string name="subtitle_magnifier">تكبير النصوص الصغيرة</string>
+    <string name="subtitle_measure">مسطرة وبوصلة ومنقلة</string>
+    <string name="subtitle_protractor">قياس الزوايا باللمس</string>
+    <string name="subtitle_ringtone">تصفح الأصوات ومعاينتها</string>
+    <string name="subtitle_ruler">قياس بالسنتيمتر والبوصة</string>
+    <string name="subtitle_stopwatch">ساعة إيقاف مع أدوار</string>
+    <string name="subtitle_timer">ضبط منبهات وعد تنازلي</string>
+    <string name="subtitle_vibration">إنشاء اهتزازات مخصصة</string>
+    <string name="subtitle_volume">التحكم في كل مستويات الصوت</string>
+    <string name="subtitle_wallpaper">تصميم خلفيات متدرجة</string>
+    <string name="title_clock">الساعة</string>
+    <string name="title_compass">البوصلة</string>
+    <string name="title_devicehub">معلومات الجهاز</string>
+    <string name="title_level">ميزان الاستواء</string>
+    <string name="title_magnifier">المكبّر</string>
+    <string name="title_measure">القياس</string>
+    <string name="title_protractor">المنقلة</string>
+    <string name="title_ringtone">معاينة النغمات</string>
+    <string name="title_ruler">المسطرة</string>
+    <string name="title_stopwatch">ساعة الإيقاف</string>
+    <string name="title_timer">المؤقت التنازلي</string>
+    <string name="title_vibration">استوديو الاهتزاز</string>
+    <string name="title_volume">لوحة الصوت</string>
+    <string name="title_wallpaper">صانع الخلفيات</string>
+</resources>

@@ -54,7 +54,6 @@ import io.github.abdurazaaqmohammed.core.ui.theme.ThemeRegistry;
 import io.github.abdurazaaqmohammed.core.ui.util.PopupMenus;
 import io.github.abdurazaaqmohammed.data.prefs.BookmarkStore;
 import io.github.abdurazaaqmohammed.data.prefs.PaneCache;
-import io.github.abdurazaaqmohammed.app.UpdateController;
 import io.github.abdurazaaqmohammed.domain.files.FileSorting;
 import io.github.abdurazaaqmohammed.features.apk.ApkResultHandler;
 import io.github.abdurazaaqmohammed.features.files.BookmarksController;
@@ -137,7 +136,6 @@ import io.github.abdurazaaqmohammed.utils.RootManager;
 import io.github.abdurazaaqmohammed.utils.RootPermissionHelper;
 import io.github.abdurazaaqmohammed.utils.SignWrapper;
 import io.github.abdurazaaqmohammed.utils.UiPrefs;
-import io.github.abdurazaaqmohammed.utils.UpdateUtil;
 import io.github.codehasan.colorpicker.PreferencesDialogFragment;
 import io.github.codehasan.colorpicker.ServiceState;
 import io.github.codehasan.colorpicker.extensions.Extensions;
@@ -176,7 +174,6 @@ public class MainActivity extends BaseActivity implements PaneNavigationControll
     public Handler handler;
     private boolean systemTheme;
     public int theme;
-    private boolean checkForUpdates;
     private File[] currentPane1Files;
     private File[] currentPane2Files;
     private List<ZipEntryInfo> currentPane1ZipEntries;
@@ -189,7 +186,6 @@ public class MainActivity extends BaseActivity implements PaneNavigationControll
     private final MultiSelectController multiSelect = new MultiSelectController(this);
     private final FtpController ftp = new FtpController(this);
     private final ApkResultHandler apkResults = new ApkResultHandler(this);
-    private final UpdateController updates = new UpdateController(this);
     private final PaneHighlightController paneHighlight = new PaneHighlightController(this);
 
     /**
@@ -224,14 +220,6 @@ public class MainActivity extends BaseActivity implements PaneNavigationControll
                     .putBoolean("logEnabled", logEnabled).apply();
         } catch (Exception ignored) {
         }
-    }
-
-    public boolean isCheckForUpdates() {
-        return checkForUpdates;
-    }
-
-    public void setCheckForUpdates(boolean checkForUpdates) {
-        this.checkForUpdates = checkForUpdates;
     }
 
     public File getHomeDir1() {
@@ -361,12 +349,10 @@ public class MainActivity extends BaseActivity implements PaneNavigationControll
     @Override
     protected void onPause() {
         super.onPause();
-        updates.unregister();
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
         settings.edit()
                 .putString("bookmarks", getBookmarks().toString())
                 .putBoolean("systemTheme", systemTheme)
-                .putBoolean("checkForUpdates", checkForUpdates)
                 .putInt("theme", theme)
                 .apply();
     }
@@ -979,7 +965,6 @@ public class MainActivity extends BaseActivity implements PaneNavigationControll
                 openSidebarDrawer();
         };
 
-        findViewById(R.id.sidebarTitle).setOnClickListener(v -> uiHelper.showAboutDialog());
         setupSidebar();
         bottomBarGestureDetector = new GestureDetectorCompat(this,
                 new GestureDetector.SimpleOnGestureListener() {
@@ -1484,14 +1469,6 @@ public class MainActivity extends BaseActivity implements PaneNavigationControll
                     }
                 }, "root-probe").start();
             });
-            if ((checkForUpdates = settings.getBoolean("checkForUpdates", true))) {
-                runWhenIdle(() -> {
-                    try {
-                        UpdateUtil.checkForUpdates(false, MainActivity.this);
-                    } catch (Exception ignored) {
-                    }
-                }, 2500);
-            }
         });
     }
 
@@ -2746,7 +2723,6 @@ public class MainActivity extends BaseActivity implements PaneNavigationControll
         } catch (Exception ignored) {
         }
         try {
-            updates.register();
             String locate = getIntent() == null ? null : getIntent().getStringExtra("locatePath");
             if (locate != null && !locate.isEmpty()) {
                 try {

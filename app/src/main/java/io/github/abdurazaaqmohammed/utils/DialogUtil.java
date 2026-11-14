@@ -1,5 +1,7 @@
 package io.github.abdurazaaqmohammed.utils;
 
+import io.github.abdurazaaqmohammed.MPManager.R;
+
 import android.app.Activity;
 import android.content.Intent;
 import android.content.ActivityNotFoundException;
@@ -36,7 +38,7 @@ public class DialogUtil {
         try {
             launcher.launch(intent);
         } catch (ActivityNotFoundException e) {
-            Toast.makeText(activity, "Enter output directory path manually", Toast.LENGTH_SHORT).show();
+            Toast.makeText(activity, R.string.hc_enter_output_dir, Toast.LENGTH_SHORT).show();
         }
     }
 

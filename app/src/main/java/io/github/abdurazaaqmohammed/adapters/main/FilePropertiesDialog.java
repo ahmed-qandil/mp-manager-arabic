@@ -241,7 +241,7 @@ public class FilePropertiesDialog {
                             context.handler.post(() -> {
                                 checksumRows.removeAllViews();
                                 TextView err = new TextView(context);
-                                err.setText("Checksum unavailable: " + e.getMessage());
+                                err.setText(context.getString(R.string.hc_checksum_unavailable, e.getMessage()));
                                 checksumRows.addView(err);
                             });
                         }

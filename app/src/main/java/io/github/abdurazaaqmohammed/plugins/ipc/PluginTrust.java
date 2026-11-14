@@ -60,7 +60,7 @@ public final class PluginTrust {
                     .setTitle(title)
                     .setMessage(msg.toString())
                     .setNegativeButton(R.string.cancel, null)
-                    .setPositiveButton("Allow", (d, w) -> {
+                    .setPositiveButton(io.github.abdurazaaqmohammed.MPManager.R.string.hc_allow, (d, w) -> {
                         try {
                             String fresh = PluginHost.certDigest(activity, plugin.packageName);
                             if (fresh == null) return;

@@ -381,7 +381,7 @@ public class SearchFragment extends Fragment {
         } else {
             layoutSearchInfo.setVisibility(View.VISIBLE);
             int count = countTotalSnippets(searchResults);
-            tvSearchInfo.setText("search results (" + count + ") - " + (currentQuery != null ? currentQuery : ""));
+            tvSearchInfo.setText(getString(R.string.hc_search_results, count, currentQuery != null ? currentQuery : ""));
         }
     }
 
@@ -587,7 +587,7 @@ public class SearchFragment extends Fragment {
         TextView pathTitleText = dialogView.findViewById(R.id.pathTitle);
         View layoutExcludeList = dialogView.findViewById(R.id.layout_exclude_list);
 
-        pathTitleText.setText("Replace with");
+        pathTitleText.setText(R.string.hc_replace_with);
         layoutExcludeList.setVisibility(View.GONE);
         cbSearchSubfolders.setVisibility(View.GONE);
         cbHex.setVisibility(View.GONE);
@@ -841,7 +841,7 @@ public class SearchFragment extends Fragment {
             final List<TreeNode> results = Collections.synchronizedList(new ArrayList<>());
             progressDialog = new AlertProgress(activity);
             progressDialog.setTitle(activity.getString(R.string.searching));
-            progressDialog.setMessage("Found: 0");
+            progressDialog.setMessage(activity.getString(R.string.hc_found_n, 0));
             progressDialog.setCancelable(false);
             progressDialog.setOnCancelListener(() -> {
                 if (isFinalized.compareAndSet(false, true)) {
@@ -1243,7 +1243,7 @@ public class SearchFragment extends Fragment {
                     if (progressDialog != null && progressDialog.isShowing()) {
                         progressDialog.setMax(total);
                         progressDialog.setProgress(processed);
-                        progressDialog.setMessage("Found: " + foundCount.get());
+                        progressDialog.setMessage(activity.getString(R.string.hc_found_n, foundCount.get()));
                     }
                 });
         }
@@ -1771,7 +1771,7 @@ public class SearchFragment extends Fragment {
             // Prepare the progress dialog
             progressDialog = new AlertProgress(activity);
             progressDialog.setTitle(activity.getString(R.string.searching));
-            progressDialog.setMessage("Found: 0");
+            progressDialog.setMessage(activity.getString(R.string.hc_found_n, 0));
             progressDialog.setCancelable(false);
             progressDialog.setOnCancelListener(() -> {
                 if (isFinalized.compareAndSet(false, true)) {
@@ -2244,7 +2244,7 @@ public class SearchFragment extends Fragment {
                 if (progressDialog != null && progressDialog.isShowing()) {
                     progressDialog.setMax(total);
                     progressDialog.setProgress(processed);
-                    progressDialog.setMessage("Found: " + foundCount.get());
+                    progressDialog.setMessage(activity.getString(R.string.hc_found_n, foundCount.get()));
                 }
             });
         }

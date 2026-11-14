@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="subtitle_base64">ترميز وفك ترميز Base64</string>
+    <string name="subtitle_binarytext">تحويل النص إلى ثنائي</string>
+    <string name="subtitle_caesar">شيفرات إزاحة وكسر بالقوة الغاشمة</string>
+    <string name="subtitle_caseconv">كبيرة وصغيرة وعنوان وعكس</string>
+    <string name="subtitle_colorconv">HEX وRGB وHSL</string>
+    <string name="subtitle_hash">MD5 وSHA-1 وSHA-256</string>
+    <string name="subtitle_json">تنسيق وضغط وتحقق</string>
+    <string name="subtitle_lorem">توليد نص placeholder</string>
+    <string name="subtitle_morse">ترميز وفك ترميز وتشغيل مورس</string>
+    <string name="subtitle_regex">اختبار الأنماط مباشرة</string>
+    <string name="subtitle_text">عداد وبصمات وترميزات وأحرف ومورس وJSON وألوان</string>
+    <string name="subtitle_textcounter">أحرف وكلمات وأسطر</string>
+    <string name="subtitle_urlcodec">ترميز وفك ترميز الروابط</string>
+    <string name="title_base64">أداة Base64</string>
+    <string name="title_binarytext">مترجم الثنائي</string>
+    <string name="title_caesar">شيفرة قيصر</string>
+    <string name="title_caseconv">محول الأحرف</string>
+    <string name="title_colorconv">محول الألوان</string>
+    <string name="title_hash">مولد البصمات</string>
+    <string name="title_json">منسق JSON</string>
+    <string name="title_lorem">مولد Lorem</string>
+    <string name="title_morse">شيفرة مورس</string>
+    <string name="title_regex">مختبر Regex</string>
+    <string name="title_text">أدوات النصوص</string>
+    <string name="title_textcounter">عداد النصوص</string>
+    <string name="title_urlcodec">مرمز الروابط</string>
+</resources>

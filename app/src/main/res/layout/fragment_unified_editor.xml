@@ -119,6 +119,7 @@
 
             <ImageButton
                 android:id="@+id/btn_find"
+            android:contentDescription="@string/search"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
@@ -126,6 +127,7 @@
 
             <ImageButton
                 android:id="@+id/btn_replace_toggle"
+            android:contentDescription="@string/replace"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
@@ -133,6 +135,7 @@
 
             <ImageButton
                 android:id="@+id/btn_search_menu"
+            android:contentDescription="@string/cd_search_options"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
@@ -140,6 +143,7 @@
 
             <ImageButton
                 android:id="@+id/btn_stop_search"
+            android:contentDescription="@string/close"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"

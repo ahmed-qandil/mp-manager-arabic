@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="subtitle_metronome">حافظ على الإيقاع بالنبضات</string>
+    <string name="subtitle_recorder">تسجيل صوت وفيديو</string>
+    <string name="subtitle_tone">تشغيل ترددات مخصصة</string>
+    <string name="subtitle_tts">نطق النص المكتوب بصوت عالٍ</string>
+    <string name="title_metronome">الميترونوم</string>
+    <string name="title_recorder">المسجل</string>
+    <string name="title_tone">مولد النغمات</string>
+    <string name="title_tts">نطق النص</string>
+</resources>

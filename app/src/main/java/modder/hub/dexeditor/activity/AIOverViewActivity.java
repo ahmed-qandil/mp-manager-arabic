@@ -169,7 +169,7 @@ public class AIOverViewActivity extends BaseActivity {
 
     private void showPromptEditorDialog() {
         final EditText input = new EditText(this);
-        input.setHint("Enter your custom prompt");
+        input.setHint(R.string.hc_enter_custom_prompt);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
 
         FrameLayout container = new FrameLayout(this);
@@ -185,7 +185,7 @@ public class AIOverViewActivity extends BaseActivity {
         container.addView(boxed);
 
         AlertDialog dialog = new MaterialAlertDialogBuilder(this)
-                .setTitle("Edit Prompt")
+                .setTitle(R.string.hc_edit_prompt)
                 .setView(container)
                 .setPositiveButton(android.R.string.ok, (dialogInterface, i) -> {
                     String customPrompt = input.getText().toString().trim();
@@ -240,7 +240,7 @@ public class AIOverViewActivity extends BaseActivity {
                         @Override
                         public void run() {
                             progressDialogShow(false);
-                            markdownText.setText("Network error: " + e.getMessage());
+                            markdownText.setText(getString(R.string.hc_network_error, e.getMessage()));
                         }
                     });
                 }
@@ -264,10 +264,10 @@ public class AIOverViewActivity extends BaseActivity {
 
                                     renderMarkdown(generatedText);
                                 } else {
-                                    markdownText.setText("Error: No candidates in response");
+                                    markdownText.setText(R.string.hc_no_candidates);
                                 }
                             } catch (Exception e) {
-                                markdownText.setText("Error parsing response");
+                                markdownText.setText(R.string.hc_error_parsing);
                             }
                             progressDialogShow(false);
                         }
@@ -276,7 +276,7 @@ public class AIOverViewActivity extends BaseActivity {
             });
         } catch (JSONException e) {
             progressDialogShow(false);
-            markdownText.setText("Error creating request");
+            markdownText.setText(R.string.hc_error_creating_request);
         }
     }
 
@@ -301,7 +301,7 @@ public class AIOverViewActivity extends BaseActivity {
             if (progressDialog == null) {
                 progressDialog = new AlertCircularProgress(this);
             }
-            progressDialog.setMessage("Generating...");
+            progressDialog.setMessage(getString(R.string.hc_generating));
             progressDialog.show();
         } else if (progressDialog != null) {
             progressDialog.dismiss();

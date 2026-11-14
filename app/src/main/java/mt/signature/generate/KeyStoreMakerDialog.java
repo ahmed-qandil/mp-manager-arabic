@@ -174,7 +174,7 @@ public class KeyStoreMakerDialog extends DialogFragment {
 
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
         builder.setView(view);
-        builder.setPositiveButton("Generate Key", (dialog, which) -> {
+        builder.setPositiveButton(R.string.hc_generate_key, (dialog, which) -> {
             generateKeys();
             CompoundButton biometrics = view.findViewById(R.id.cb_save_password);
             boolean useBiometrics = biometrics.isChecked();

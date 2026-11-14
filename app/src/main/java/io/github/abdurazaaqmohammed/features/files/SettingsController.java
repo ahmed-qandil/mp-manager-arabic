@@ -67,7 +67,6 @@ import io.github.abdurazaaqmohammed.utils.SectionCollapse;
 import io.github.abdurazaaqmohammed.utils.ShizukuManager;
 import io.github.abdurazaaqmohammed.utils.SignatureKeyDialog;
 import io.github.abdurazaaqmohammed.utils.UiPrefs;
-import io.github.abdurazaaqmohammed.utils.UpdateUtil;
 import io.github.codehasan.colorpicker.extensions.Extensions;
 
 import java.io.File;
@@ -217,17 +216,6 @@ public class SettingsController {
         setupFileOpsSettings(settingsDialog, settings);
         setupAccessSettings(settingsDialog, settings);
 
-        View checkUpdateNow = settingsDialog.findViewById(R.id.checkUpdateNow);
-        CompoundButton updateSwitch = settingsDialog.findViewById(R.id.checkUpdatesToggle);
-        boolean checkForUpdates = isCheckForUpdates();
-        updateSwitch.setChecked(checkForUpdates);
-        updateSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            setCheckForUpdates(isChecked);
-            checkUpdateNow.setVisibility(isChecked ? View.GONE : View.VISIBLE);
-        });
-        checkUpdateNow.setVisibility(checkForUpdates ? View.GONE : View.VISIBLE);
-        checkUpdateNow.setOnClickListener(v1 -> UpdateUtil.checkForUpdates(true, activity));
-        settingsDialog.findViewById(R.id.about).setOnClickListener(v -> new UIHelper(activity).showAboutDialog());
         setupPluginSettings(settingsDialog, settings);
         setupCollapsibleSections(settingsDialog);
     }
@@ -1144,20 +1132,6 @@ public class SettingsController {
                 .putBoolean("logEnabled", enabled).apply();
     }
 
-    private boolean isCheckForUpdates() {
-        if (host != null) return host.isCheckForUpdates();
-        return PreferenceManager.getDefaultSharedPreferences(activity)
-                .getBoolean("checkForUpdates", true);
-    }
-
-    private void setCheckForUpdates(boolean enabled) {
-        if (host != null) {
-            host.setCheckForUpdates(enabled);
-            return;
-        }
-        PreferenceManager.getDefaultSharedPreferences(activity).edit()
-                .putBoolean("checkForUpdates", enabled).apply();
-    }
 
     private String homeDirPath(int pane) {
         if (host != null) {

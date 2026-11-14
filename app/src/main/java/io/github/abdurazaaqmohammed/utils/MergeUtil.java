@@ -133,7 +133,7 @@ public class MergeUtil {
         try {
             layout.setHint(context.getString(R.string.compression_level));
         } catch (Exception ignored) {
-            layout.setHint("Compression level");
+            layout.setHint(R.string.hc_compression_level);
         }
         layout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
         layout.addView(createCompressionDropdown(context),

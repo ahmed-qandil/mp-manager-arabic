@@ -89,7 +89,7 @@ public class EditorSettingsActivity extends BaseActivity {
                 apiKeyPref.setOnPreferenceChangeListener((preference, newValue) -> {
                     String apiKey = ((String) newValue).trim();
                     if (apiKey.isEmpty()) {
-                        Toast.makeText(requireContext(), "Input key", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(requireContext(), R.string.hc_input_key, Toast.LENGTH_SHORT).show();
                         return false;
                     }
                     preference.setSummary(formatApiKeySummary(apiKey));
@@ -128,16 +128,16 @@ public class EditorSettingsActivity extends BaseActivity {
             Context ctx = getContext();
             if (ctx == null) return;
             if (modder.hub.dexeditor.fragment.SettingsFragment.getChatGptApiKey(ctx).trim().isEmpty()) {
-                if (manual) Toast.makeText(ctx, "Set API key first", Toast.LENGTH_SHORT).show();
+                if (manual) Toast.makeText(ctx, R.string.hc_set_api_key_first, Toast.LENGTH_SHORT).show();
                 return;
             }
-            if (manual) Toast.makeText(ctx, "Fetching models", Toast.LENGTH_SHORT).show();
+            if (manual) Toast.makeText(ctx, R.string.hc_fetching_models, Toast.LENGTH_SHORT).show();
             modder.hub.dexeditor.fragment.SettingsFragment.fetchGeminiModels(ctx, models -> {
                 Activity a = getActivity();
                 if (a == null || !isAdded()) return;
                 a.runOnUiThread(() -> {
                     if (models.isEmpty()) {
-                        if (manual) Toast.makeText(a, "No Gemini models found", Toast.LENGTH_SHORT).show();
+                        if (manual) Toast.makeText(a, R.string.hc_no_gemini_models, Toast.LENGTH_SHORT).show();
                         return;
                     }
                     ListPreference modelPref = findPreference("gemini_model");
@@ -151,13 +151,13 @@ public class EditorSettingsActivity extends BaseActivity {
                             modelPref.setValue(models.contains(fallback) ? fallback : models.get(0));
                         }
                     }
-                    if (manual) Toast.makeText(a, models.size() + " models loaded", Toast.LENGTH_SHORT).show();
+                    if (manual) Toast.makeText(a, a.getString(R.string.hc_models_loaded, models.size()), Toast.LENGTH_SHORT).show();
                 });
             });
         }
 
-        private static String formatApiKeySummary(String apiKey) {
-            return apiKey.isEmpty() ? "API Key not set" :
+        private String formatApiKeySummary(String apiKey) {
+            return apiKey.isEmpty() ? getString(R.string.hc_api_key_not_set) :
                     "••••••••" + apiKey.substring(Math.max(0, apiKey.length() - 4));
         }
 
@@ -166,7 +166,7 @@ public class EditorSettingsActivity extends BaseActivity {
                 startActivity(new Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://aistudio.google.com/app/u/0/apikey")));
             } catch (Exception e) {
-                Toast.makeText(requireContext(), "No browser found", Toast.LENGTH_SHORT).show();
+                Toast.makeText(requireContext(), R.string.hc_no_browser_found, Toast.LENGTH_SHORT).show();
             }
         }
 
@@ -253,7 +253,7 @@ public class EditorSettingsActivity extends BaseActivity {
             scrollView.addView(layout);
 
             EditText labelInput = new EditText(getContext());
-            labelInput.setHint("Button Label (optional)");
+            labelInput.setHint(R.string.hc_button_label_opt);
             layout.addView(labelInput);
 
             TextView clickHeader = new TextView(getContext());
@@ -269,12 +269,12 @@ public class EditorSettingsActivity extends BaseActivity {
             layout.addView(actionSpinner);
 
             EditText dataInput1 = new EditText(getContext());
-            dataInput1.setHint("Data 1");
+            dataInput1.setHint(R.string.hc_data_1);
             dataInput1.setVisibility(View.GONE);
             layout.addView(dataInput1);
 
             EditText dataInput2 = new EditText(getContext());
-            dataInput2.setHint("Data 2");
+            dataInput2.setHint(R.string.hc_data_2);
             dataInput2.setVisibility(View.GONE);
             layout.addView(dataInput2);
 
@@ -290,12 +290,12 @@ public class EditorSettingsActivity extends BaseActivity {
             layout.addView(longActionSpinner);
 
             EditText longDataInput1 = new EditText(getContext());
-            longDataInput1.setHint("Long Data 1");
+            longDataInput1.setHint(R.string.hc_long_data_1);
             longDataInput1.setVisibility(View.GONE);
             layout.addView(longDataInput1);
 
             EditText longDataInput2 = new EditText(getContext());
-            longDataInput2.setHint("Long Data 2");
+            longDataInput2.setHint(R.string.hc_long_data_2);
             longDataInput2.setVisibility(View.GONE);
             layout.addView(longDataInput2);
 
@@ -367,13 +367,13 @@ public class EditorSettingsActivity extends BaseActivity {
                     String action = actions[pos];
                     if (action.equals("Insert text")) {
                         data1.setVisibility(View.VISIBLE);
-                        data1.setHint("Text to insert");
+                        data1.setHint(R.string.hc_text_to_insert);
                         data2.setVisibility(View.GONE);
                     } else if (action.equals("Regex find and replace")) {
                         data1.setVisibility(View.VISIBLE);
-                        data1.setHint("Find Regex");
+                        data1.setHint(R.string.hc_find_regex);
                         data2.setVisibility(View.VISIBLE);
-                        data2.setHint("Replace Regex");
+                        data2.setHint(R.string.hc_replace_regex);
                     } else {
                         data1.setVisibility(View.GONE);
                         data2.setVisibility(View.GONE);

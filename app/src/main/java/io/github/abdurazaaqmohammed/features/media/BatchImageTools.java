@@ -128,13 +128,13 @@ public class BatchImageTools {
         int pad = (int) (16 * context.getResources().getDisplayMetrics().density + 0.5f);
         root.setPadding(pad, pad / 2, pad, 0);
         EditText wInput = new EditText(context);
-        wInput.setHint("Width");
+        wInput.setHint(R.string.hc_width);
         wInput.setText(String.valueOf(minW));
         wInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         wInput.setSingleLine(true);
         root.addView(wInput);
         EditText hInput = new EditText(context);
-        hInput.setHint("Height");
+        hInput.setHint(R.string.hc_height);
         hInput.setText(String.valueOf(minH));
         hInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         hInput.setSingleLine(true);

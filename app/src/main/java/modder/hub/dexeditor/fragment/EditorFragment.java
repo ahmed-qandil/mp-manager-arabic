@@ -714,7 +714,7 @@ public class EditorFragment extends Fragment implements SmaliMethodFieldListFrag
         intent.setType("text/plain");
         final List<ResolveInfo> resolveInfoList = packageManager.queryIntentActivities(intent, 0);
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
-        builder.setTitle("Available system translations");
+        builder.setTitle(R.string.hc_available_translations);
         String[] appNames = new String[resolveInfoList.size()];
         final String[] selectedPackage = {""};
         int selectedIndex = -1;
@@ -730,9 +730,9 @@ public class EditorFragment extends Fragment implements SmaliMethodFieldListFrag
             }
         }
         builder.setSingleChoiceItems(appNames, selectedIndex, (dialog, which) -> selectedPackage[0] = resolveInfoList.get(which).activityInfo.packageName);
-        builder.setPositiveButton("Save", (dialog, which) -> {
+        builder.setPositiveButton(R.string.arsc_save, (dialog, which) -> {
             if (selectedPackage[0].isEmpty()) {
-                Toast.makeText(requireContext(), "No app selected", Toast.LENGTH_SHORT).show();
+                Toast.makeText(requireContext(), R.string.hc_no_app_selected, Toast.LENGTH_SHORT).show();
                 return;
             }
             preferencesEditor.putString("selectedPackage", selectedPackage[0]);

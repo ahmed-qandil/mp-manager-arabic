@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="subtitle_password">توليد كلمات مرور آمنة</string>
+    <string name="subtitle_pick">اختيار عنصر عشوائي من قائمة</string>
+    <string name="subtitle_random">عشوائيات وكلمات مرور وUUID ورموز</string>
+    <string name="subtitle_strength">الإنتروبيا وتقديرات الاختراق</string>
+    <string name="subtitle_token">رموز hex عشوائية آمنة</string>
+    <string name="subtitle_uuid">توليد UUID عشوائية</string>
+    <string name="title_password">مولد كلمات المرور</string>
+    <string name="title_pick">منتقي القوائم</string>
+    <string name="title_random">أدوات عشوائية</string>
+    <string name="title_strength">قوة كلمة المرور</string>
+    <string name="title_token">مولد الرموز</string>
+    <string name="title_uuid">مولد UUID</string>
+</resources>

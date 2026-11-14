@@ -141,7 +141,7 @@ implements SharedPreferences.OnSharedPreferenceChangeListener {
 	private boolean validateAndSetApiKey(Preference preference, String apiKey) {
 		apiKey = apiKey.trim();
 		if (apiKey.isEmpty()) {
-			Toast.makeText(getActivity(), "Input key", Toast.LENGTH_SHORT).show();
+			Toast.makeText(getActivity(), R.string.hc_input_key, Toast.LENGTH_SHORT).show();
 			return false;
 		}
 		preference.setSummary(formatApiKeySummary(apiKey));
@@ -149,7 +149,7 @@ implements SharedPreferences.OnSharedPreferenceChangeListener {
 	}
 	
 	private String formatApiKeySummary(String apiKey) {
-		return apiKey.isEmpty() ? "API Key not set" : 
+		return apiKey.isEmpty() ? getString(R.string.hc_api_key_not_set) : 
 		"••••••••" + apiKey.substring(Math.max(0, apiKey.length() - 4));
 	}
 	
@@ -158,23 +158,23 @@ implements SharedPreferences.OnSharedPreferenceChangeListener {
 			startActivity(new Intent(Intent.ACTION_VIEW, 
 			Uri.parse("https://aistudio.google.com/app/u/0/apikey")));
 		} catch (Exception e) {
-			Toast.makeText(getActivity(), "No browser found", Toast.LENGTH_SHORT).show();
+			Toast.makeText(getActivity(), R.string.hc_no_browser_found, Toast.LENGTH_SHORT).show();
 		}
 	}
 	private void refreshGeminiModels() {
 		Context ctx = getActivity();
 		if (ctx == null) return;
 		if (getChatGptApiKey(ctx).trim().isEmpty()) {
-			Toast.makeText(getActivity(), "Set API key first", Toast.LENGTH_SHORT).show();
+			Toast.makeText(getActivity(), R.string.hc_set_api_key_first, Toast.LENGTH_SHORT).show();
 			return;
 		}
-		Toast.makeText(getActivity(), "Fetching models", Toast.LENGTH_SHORT).show();
+		Toast.makeText(getActivity(), R.string.hc_fetching_models, Toast.LENGTH_SHORT).show();
 		fetchGeminiModels(ctx, models -> {
 			Activity a = getActivity();
 			if (a == null) return;
 			a.runOnUiThread(() -> {
 				if (models.isEmpty()) {
-					Toast.makeText(a, "No Gemini models found", Toast.LENGTH_SHORT).show();
+					Toast.makeText(a, R.string.hc_no_gemini_models, Toast.LENGTH_SHORT).show();
 					return;
 				}
 				ListPreference modelPref = findPreference(KEY_GEMINI_MODEL);

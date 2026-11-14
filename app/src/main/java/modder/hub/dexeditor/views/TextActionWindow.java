@@ -951,7 +951,7 @@ public class TextActionWindow extends EditorTextActionWindow implements View.OnL
 			intent.setData(Uri.parse(normalizedUrl));
 			context.startActivity(intent);
 		} catch (Exception e) {
-			Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show();
+			Toast.makeText(context, R.string.hc_no_browser_found, Toast.LENGTH_SHORT).show();
 		}
 	}
 	

@@ -2567,7 +2567,7 @@ public class DexEditorActivity extends BaseActivity {
                                 // detect compile error from spceific classes and navigate to the class for fix
                                 new MaterialAlertDialogBuilder(DexEditorActivity.this)
                                         .setTitle(R.string.compile_error)
-                                        .setMessage("Class: " + faultyClass + "\n\n" + error)
+                                        .setMessage(getString(R.string.hc_class_x, faultyClass) + error)
                                         .setPositiveButton(R.string.fix, (d, w) -> {
                                             if (finalLine != -1) {
                                                 openClassAtLine(faultyClass, finalLine, finalColumn, null);
