@@ -398,7 +398,6 @@ public class SettingsController {
         SectionCollapse.applyToSection(root, R.id.sectionElevatedCard, "elevated");
         SectionCollapse.applyToSection(root, R.id.sectionBehaviorCard, "behavior");
         SectionCollapse.applyToSection(root, R.id.sectionSigningCard, "signing");
-        SectionCollapse.applyToSection(root, R.id.sectionUpdateCard, "update");
         SectionCollapse.applyToSection(root, R.id.sectionPluginsCard, "plugins");
     }
 

@@ -10,7 +10,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import androidx.appcompat.R;
+import io.github.abdurazaaqmohammed.MPManager.R;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
@@ -73,8 +73,8 @@ public class AdbBrowserActivity extends BaseActivity {
         root.setOrientation(LinearLayout.VERTICAL);
 
         toolbar = new MaterialToolbar(this);
-        toolbar.setTitle(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_browser);
-        toolbar.setNavigationIcon(R.drawable.abc_ic_ab_back_material);
+        toolbar.setTitle(R.string.hc_adb_browser);
+        toolbar.setNavigationIcon(androidx.appcompat.R.drawable.abc_ic_ab_back_material);
         toolbar.setNavigationOnClickListener(v -> finish());
         root.addView(toolbar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -85,7 +85,7 @@ public class AdbBrowserActivity extends BaseActivity {
         controls.setPadding(pad, pad, pad, pad);
         pathInput = new EditText(this);
         pathInput.setSingleLine(true);
-        pathInput.setHint(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_path_hint);
+        pathInput.setHint(R.string.hc_adb_path_hint);
         pathInput.setText(START_PATH);
         pathInput.setTextSize(14);
         controls.addView(pathInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -120,7 +120,7 @@ public class AdbBrowserActivity extends BaseActivity {
     /** Open the ADB session once, then list the starting path. */
     private void connectAndLoad(String path) {
         final int seq = ++requestSeq;
-        status.setText(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_connecting);
+        status.setText(R.string.hc_adb_connecting);
         io.execute(() -> {
             try {
                 if (service == null) {
@@ -144,7 +144,7 @@ public class AdbBrowserActivity extends BaseActivity {
         }
         final String target = path;
         final int seq = ++requestSeq;
-        status.setText(getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_listing, target));
+        status.setText(getString(R.string.hc_adb_listing, target));
         io.execute(() -> {
             try {
                 if (service == null) {
@@ -165,7 +165,7 @@ public class AdbBrowserActivity extends BaseActivity {
                 return; // a newer navigation superseded this reply
             }
             if (error != null) {
-                status.setText(getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_adb_error_at, path, friendly(error)));
+                status.setText(getString(R.string.hc_adb_error_at, path, friendly(error)));
                 return;
             }
             currentPath = path;
