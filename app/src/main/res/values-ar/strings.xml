@@ -1683,11 +1683,6 @@
     <string name="edpref_get_api_key">الحصول على مفتاح API</string>
     <string name="edpref_get_api_key_summary">زيارة موقع Gemini للحصول على مفتاح API الخاص بك</string>
     <string name="donate">تبرع</string>
-    <string-array name="ftp_security_options">
-        <item>@string/ftp_security_none</item>
-        <item>@string/ftp_security_ftps_explicit</item>
-        <item>@string/ftp_security_ftps_implicit</item>
-    </string-array>
     <string name="cd_search_options">خيارات البحث</string>
     <string name="hc_generate_key">توليد المفتاح</string>
     <string name="hc_unknown_tool">أداة غير معروفة</string>
