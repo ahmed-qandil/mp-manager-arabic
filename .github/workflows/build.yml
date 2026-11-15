@@ -67,14 +67,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete v1.1.1-ar1 --yes --cleanup-tag 2>/dev/null || true
-          git push origin :refs/tags/v1.1.1-ar1 2>/dev/null || true
+          gh release delete v1.1.1-ar2 --yes --cleanup-tag 2>/dev/null || true
+          git push origin :refs/tags/v1.1.1-ar2 2>/dev/null || true
 
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create v1.1.1-ar1 \
-            --title "MP Manager v1.1.1-ar1 (Arabic)" \
+          gh release create v1.1.1-ar2 \
+            --title "MP Manager v1.1.1-ar2 (Arabic)" \
             --notes "Custom Arabic build of MP Manager 1.1.1. Unsigned universal APK (32-bit + 64-bit)." \
             "${{ steps.apk.outputs.path }}" mpmanager-source.zip

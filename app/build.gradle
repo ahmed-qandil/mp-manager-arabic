@@ -13,7 +13,7 @@ android {
         targetSdk 37
         multiDexEnabled true
         versionCode 12
-        versionName "1.1.1-ar1"
+        versionName "1.1.1-ar2"
     }
 
     buildTypes {

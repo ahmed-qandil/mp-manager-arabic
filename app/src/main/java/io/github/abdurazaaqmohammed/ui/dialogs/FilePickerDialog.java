@@ -1,5 +1,6 @@
 package io.github.abdurazaaqmohammed.ui.dialogs;
 
+import io.github.abdurazaaqmohammed.adapters.A11yRow;
 import android.app.Activity;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -384,6 +385,7 @@ public class FilePickerDialog {
                     File parent = currentDir.getParentFile();
                     if (parent != null) loadDirectory(parent);
                 });
+                A11yRow.apply(holder.itemView, context.getString(R.string.row_parent_folder), "");
                 return;
             }
             File f = entries.get(position - 1);
@@ -393,6 +395,7 @@ public class FilePickerDialog {
             holder.itemView.setBackgroundColor(selected ? Color.DKGRAY : Color.TRANSPARENT);
             holder.itemView.setOnClickListener(v -> handleClick(f));
             holder.itemView.setOnLongClickListener(v -> handleLongClick(f));
+            A11yRow.apply(holder.itemView, f.getName(), holder.fileDateView.getVisibility() == View.VISIBLE ? holder.fileDateView.getText() : "");
         }
 
         static class ViewHolder extends RecyclerView.ViewHolder {

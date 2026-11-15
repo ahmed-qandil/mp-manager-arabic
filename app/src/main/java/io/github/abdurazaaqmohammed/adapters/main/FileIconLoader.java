@@ -1,5 +1,6 @@
 package io.github.abdurazaaqmohammed.adapters.main;
 
+import io.github.abdurazaaqmohammed.adapters.A11yRow;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -87,6 +88,7 @@ public class FileIconLoader {
             fileDateView.setVisibility(View.VISIBLE);
             fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
             fileDateView.setText(new StringBuilder(UiPrefs.formatDate(context, zipEntry.getLastModified())).append(' ').append(FileSize.getHumanReadableFileSize(zipEntry.getSize())));
+            A11yRow.refreshFrom(fileDateView);
         } else if (zipEntry.isDirectory()) {
             fileIconView.setImageDrawable(cachedFolderIcon);
             fileDateView.setVisibility(View.INVISIBLE);
@@ -95,6 +97,7 @@ public class FileIconLoader {
             fileDateView.setVisibility(View.VISIBLE);
             fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
             fileDateView.setText(new StringBuilder(UiPrefs.formatDate(context, zipEntry.getLastModified())).append(' ').append(FileSize.getHumanReadableFileSize(zipEntry.getSize())));
+            A11yRow.refreshFrom(fileDateView);
         }
     }
 
@@ -119,6 +122,7 @@ public class FileIconLoader {
                     fileDateView.setVisibility(View.VISIBLE);
                     fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
                     fileDateView.setText(new StringBuilder(UiPrefs.formatDate(context, mt)).append(' ').append(FileSize.getHumanReadableFileSize(len)));
+                    A11yRow.refreshFrom(fileDateView);
                 }
             } else {
                 showFileStatsAsync(file, fileDateView);
@@ -136,6 +140,7 @@ public class FileIconLoader {
             fileDateView.setVisibility(View.VISIBLE);
             fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
             fileDateView.setText(new StringBuilder(UiPrefs.formatDate(context, cachedMtime)).append(' ').append(FileSize.getHumanReadableFileSize(cachedSize)));
+            A11yRow.refreshFrom(fileDateView);
             return;
         }
         fileDateView.setVisibility(View.INVISIBLE);
@@ -160,6 +165,7 @@ public class FileIconLoader {
                     fileDateView.setVisibility(View.VISIBLE);
                     fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
                     fileDateView.setText(new StringBuilder(UiPrefs.formatDate(context, finalMtime)).append(' ').append(FileSize.getHumanReadableFileSize(finalSize)));
+                    A11yRow.refreshFrom(fileDateView);
                 }
             });
         });
@@ -195,6 +201,7 @@ public class FileIconLoader {
             fileDateView.setVisibility(View.VISIBLE);
             fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
             fileDateView.setText(UiPrefs.formatDate(context, mtime));
+            A11yRow.refreshFrom(fileDateView);
             return;
         }
         if (!AccessManager.fileOpsOn(context)) {
@@ -209,6 +216,7 @@ public class FileIconLoader {
             fileDateView.setVisibility(View.VISIBLE);
             fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
             fileDateView.setText(UiPrefs.formatDate(context, cached));
+            A11yRow.refreshFrom(fileDateView);
             return;
         }
         fileDateView.setVisibility(View.INVISIBLE);
@@ -227,6 +235,7 @@ public class FileIconLoader {
                     fileDateView.setVisibility(View.VISIBLE);
                     fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
                     fileDateView.setText(UiPrefs.formatDate(context, finalM));
+                    A11yRow.refreshFrom(fileDateView);
                 }
             });
         });

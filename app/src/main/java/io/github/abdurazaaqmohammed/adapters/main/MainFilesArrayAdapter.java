@@ -1,5 +1,6 @@
 package io.github.abdurazaaqmohammed.adapters.main;
 
+import io.github.abdurazaaqmohammed.adapters.A11yRow;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.Intent;
@@ -468,6 +469,10 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                 finalPosition,
                 MainFilesArrayAdapter.this,
                 pane1 ? 1 : 2));
+
+        CharSequence a11yName = "..".equals(finalFileName) ? context.getString(R.string.row_parent_folder) : finalFileName;
+        CharSequence a11yInfo = holder.fileDateView.getVisibility() == View.VISIBLE ? holder.fileDateView.getText() : "";
+        A11yRow.apply(convertView, a11yName, a11yInfo);
     }
 
     /**

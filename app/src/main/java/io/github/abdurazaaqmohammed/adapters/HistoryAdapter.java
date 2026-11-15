@@ -1,5 +1,6 @@
 package io.github.abdurazaaqmohammed.adapters;
 
+import io.github.abdurazaaqmohammed.adapters.A11yRow;
 import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -59,7 +60,7 @@ public class HistoryAdapter extends ArrayAdapter<NavigationHistoryEntry> {
         }
         fileNameView.setText(fileName);
         fileDateView.setText(path);
-        fileDateView.setContentDescription(context.rss.getString(R.string.filepath));
+        A11yRow.apply(convertView, fileName, path);
 
         fileIconView.setImageDrawable(ResourcesCompat.getDrawable(context.rss,
                 entry.isZip() ? R.drawable.baseline_folder_zip_24 : R.drawable.folder__61764____the_noun_project,

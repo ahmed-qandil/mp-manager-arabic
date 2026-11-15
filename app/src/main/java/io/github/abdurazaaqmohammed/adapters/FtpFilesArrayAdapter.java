@@ -1,5 +1,6 @@
 package io.github.abdurazaaqmohammed.adapters;
 
+import io.github.abdurazaaqmohammed.adapters.A11yRow;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.text.format.Formatter;
@@ -91,6 +92,8 @@ public class FtpFilesArrayAdapter extends RecyclerView.Adapter<FtpFilesArrayAdap
             String dateStr = date != null ? dateFormat.format(date) : "";
             holder.fileDateView.setText(dateStr + " " + sizeStr);
         }
+
+        A11yRow.apply(holder.itemView, "..".equals(file.getName()) ? context.rss.getString(R.string.row_parent_folder) : file.getName(), holder.fileDateView.getText());
 
         holder.itemView.setOnClickListener(v -> {
             context.setCurrentPane(pane1 ? 1 : 2);
