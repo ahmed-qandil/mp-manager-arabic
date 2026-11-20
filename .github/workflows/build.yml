@@ -42,13 +42,15 @@ jobs:
       - name: Locate APK
         id: apk
         run: |
-          APK_PATH=$(ls app/build/outputs/apk/release/*.apk | head -n1)
+          APK_PATH=$(ls app/build/outputs/apk/full/release/*.apk | head -n1)
+          if [ -z "$APK_PATH" ]; then echo "::error::no APK found under app/build/outputs/apk/full/release/"; exit 1; fi
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
           echo "name=$(basename $APK_PATH)" >> "$GITHUB_OUTPUT"
 
       - name: Verify APK supports 32-bit and 64-bit ARM
         run: |
           APK="${{ steps.apk.outputs.path }}"
+          if [ -z "$APK" ] || [ ! -f "$APK" ]; then echo "::error::APK path empty or missing: '$APK'"; exit 1; fi
           MISSING=0
           for lib in $(unzip -l "$APK" | grep -oE 'lib/[^/]+/[^ ]+\.so$' | sed 's|lib/[^/]*/||' | sort -u); do
             for abi in armeabi-v7a arm64-v8a; do
