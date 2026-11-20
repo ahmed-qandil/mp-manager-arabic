@@ -54,8 +54,14 @@ jobs:
       - name: Run emulator smoke test
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 30
           arch: x86_64
+          target: google_apis
+          emulator-boot-timeout: 1200
+          cores: 4
+          ram-size: 4096M
+          heap-size: 512M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
             set -x
