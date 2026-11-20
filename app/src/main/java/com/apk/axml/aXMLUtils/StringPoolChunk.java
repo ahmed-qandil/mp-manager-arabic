@@ -25,7 +25,11 @@ public class StringPoolChunk extends Chunk<StringPoolChunk.H> {
     }
     private int[] stringsOffset;
 
-    final Encoding encoding = aXMLEncoder.Config.encoding;
+    Encoding encoding = aXMLEncoder.Config.encoding;
+
+    public void setEncoding(Encoding encoding) {
+        if (encoding != null) this.encoding = encoding;
+    }
 
     public StringPoolChunk(Chunk parent) {
         super(parent);
@@ -71,11 +75,26 @@ public class StringPoolChunk extends Chunk<StringPoolChunk.H> {
             }
         }
 
+        // ResStringPool length words are one byte below 128, two bytes
+        // (high bit set first) at or above it.
+        private static int lengthHeaderSize(int len) {
+            return len < 128 ? 1 : 2;
+        }
+
+        private void writeLength(IntWriter w, int len) throws IOException {
+            if (len < 128) {
+                w.write((byte)len);
+            } else {
+                w.write((byte)(0x80 | (len >> 8)));
+                w.write((byte)(len & 0xFF));
+            }
+        }
+
         int size() {
             if (cdata != null) {
                 return cdata.length*2+4+padding();
             }else{
-                return bdata.length+3+padding();
+                return lengthHeaderSize(length()) + lengthHeaderSize(bdata.length) + bdata.length + 1 + padding();
             }
         }
 
@@ -87,8 +106,8 @@ public class StringPoolChunk extends Chunk<StringPoolChunk.H> {
                 w.write((short)0);
                 if (padding() == 2)w.write((short)0);
             } else {
-                w.write((byte)length());
-                w.write((byte)bdata.length);
+                writeLength(w, length());
+                writeLength(w, bdata.length);
                 for (byte c:bdata) w.write(c);
                 w.write((byte)0);
                 int p = padding();
@@ -138,8 +157,11 @@ public class StringPoolChunk extends Chunk<StringPoolChunk.H> {
         }
         header.stringCount = rawStrings.size();
         header.styleCount = 0;
-        header.size = off+header.headerSize+header.stringCount*4+header.styleCount*4;
-        header.stringPoolOffset = offsets.size()*4+header.headerSize;
+        int unpaddedSize = off + header.headerSize + header.stringCount * 4 + header.styleCount * 4;
+        int rem = unpaddedSize % 4;
+        int pad = rem == 0 ? 0 : 4 - rem;
+        header.size = unpaddedSize + pad;
+        header.stringPoolOffset = offsets.size() * 4 + header.headerSize;
         header.stylePoolOffset = 0;
         stringsOffset = new int[offsets.size()];
         if (encoding == Encoding.UTF8) header.flags |= 0x100;
@@ -152,6 +174,8 @@ public class StringPoolChunk extends Chunk<StringPoolChunk.H> {
         for (int i:stringsOffset) w.write(i);
         for (int i:stylesOffset) w.write(i);
         for (RawString r:rawStrings) r.write(w);
+        int rem = header.size - (header.headerSize + header.stringCount * 4 + header.styleCount * 4 + (rawStrings.isEmpty() ? 0 : stringsOffset[stringsOffset.length - 1] + rawStrings.get(rawStrings.size() - 1).size()));
+        for (int i = 0; i < rem; i++) w.write((byte) 0);
     }
 
     public class StringItem {

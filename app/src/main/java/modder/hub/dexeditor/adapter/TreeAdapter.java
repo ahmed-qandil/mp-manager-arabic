@@ -55,21 +55,26 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 import androidx.core.widget.CompoundButtonCompat;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import android.content.res.ColorStateList;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import io.github.abdurazaaqmohammed.MPManager.R;
-import io.github.abdurazaaqmohammed.utils.CopyUtil;
+import io.github.abdurazaaqmohammed.ui.common.util.Haptics;
+import io.github.abdurazaaqmohammed.util.io.CopyUtil;
 import modder.hub.dexeditor.activity.DexEditorActivity;
 import modder.hub.dexeditor.model.TreeNode;
 import modder.hub.dexeditor.utils.TreeHelper;
@@ -91,8 +96,8 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
     private final Context context;
     private final float density;
 
-    private static GradientDrawable folderDrawable;
-    private static GradientDrawable classDrawable;
+    private GradientDrawable folderDrawable;
+    private GradientDrawable classDrawable;
 
     // UI state flags
     private boolean isSelectionMode = false;
@@ -105,6 +110,11 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
 
     // Caches for performance
     private final Map<String, Boolean> deletedStateCache = new HashMap<>();
+    /** Rows the user already opened, rendered dimmed so the results read as visited. */
+    private final Set<String> openedKeys = new LinkedHashSet<>();
+    private int openedTextColor = 0;
+    private final int defaultTextColor;
+    private final int openedTextColorResolved;
 
     public TreeAdapter(Context context, List<TreeNode> rootNodes, OnNodeClickListener listener, boolean isHistory) {
         this(context, rootNodes, listener, isHistory, false);
@@ -122,17 +132,31 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
         this.isHistory = isHistory;
         this.isModifiedList = isModifiedList;
         this.density = context.getResources().getDisplayMetrics().density;
+        this.defaultTextColor = resolveAttrColor(android.R.attr.textColorPrimary, 0xFF000000);
+        this.openedTextColorResolved = resolveAttrColor(com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF888888);
 
         if (folderDrawable == null) {
             folderDrawable = new GradientDrawable();
             folderDrawable.setCornerRadius(5 * density); // Minimal radius for folder (Standard)
-            folderDrawable.setColor(0xFF252525);
+            folderDrawable.setColor(resolveAttrColor(com.google.android.material.R.attr.colorSurfaceContainerHighest, 0xFF252525));
         }
         if (classDrawable == null) {
             classDrawable = new GradientDrawable();
             classDrawable.setCornerRadius(100 * density); // Fully circular for Class
-            classDrawable.setColor(0xFF3860AF);
+            classDrawable.setColor(resolveAttrColor(com.google.android.material.R.attr.colorPrimaryContainer, 0xFF3860AF));
         }
+    }
+
+    private int resolveAttrColor(int attr, int fallback) {
+        try {
+            TypedValue value = new TypedValue();
+            if (context.getTheme().resolveAttribute(attr, value, true) && value.resourceId != 0) {
+                return ContextCompat.getColor(context, value.resourceId);
+            }
+            if (value.data != 0) return value.data;
+        } catch (Exception ignored) {
+        }
+        return fallback;
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -143,10 +167,29 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
 
     public void setSearchList(boolean searchList, String query) {
         this.isSearchList = searchList;
-        if (query == null || !query.equals(this.searchQuery)) {
-            clearCachedSpannedNamesRecursive(rootNodes);
-        }
+        clearCachedSpannedNamesRecursive(rootNodes);
+        openedKeys.clear();
         this.searchQuery = query;
+        notifyDataSetChanged();
+    }
+
+    private static String openedKey(TreeNode node) {
+        if (node == null) return null;
+        return node.isSnippet() ? node.getFullName() + "#" + node.getLineNumber() : node.getFullName();
+    }
+
+    /** Records the row as visited and dims it so it reads as already opened. */
+    private void markOpened(TreeNode node, int position) {
+        if (node != null) node.setVisited(true);
+        String key = openedKey(node);
+        if (key != null) openedKeys.add(key);
+        if (position >= 0 && position < visibleNodes.size()) notifyItemChanged(position);
+    }
+
+    public boolean isOpened(TreeNode node) {
+        if (node != null && node.isVisited()) return true;
+        String key = openedKey(node);
+        return key != null && openedKeys.contains(key);
     }
 
     private void clearCachedSpannedNamesRecursive(List<TreeNode> nodes) {
@@ -245,36 +288,43 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
                 toggleNode(node, pos);
             } else if (node.isSnippet()) {
                 if (isSearchList) {
-                    boolean isDeleted = DexEditorActivity.classTree != null && !DexEditorActivity.classTree.classMap.containsKey(node.getFullName());
+                    boolean isDeleted = ((DexEditorActivity) context).classTree != null && !((DexEditorActivity) context).classTree.classMap.containsKey(node.getFullName());
                     if (isDeleted) {
                         showDeletedPrompt(node, pos);
                         return;
                     }
                 }
+                markOpened(node, pos);
                 if (listener != null) listener.onNodeClick(node);
             } else {
                 if (!isSelectionMode) {
-                    if (isHistory && !node.isDirectory()) {
-                        boolean isDeleted = DexEditorActivity.classTree != null && !DexEditorActivity.classTree.classMap.containsKey(node.getFullName());
+                    if ((isHistory || isSearchList) && !node.isDirectory()) {
+                        boolean isDeleted = ((DexEditorActivity) context).classTree != null && !((DexEditorActivity) context).classTree.classMap.containsKey(node.getFullName());
                         if (isDeleted) {
                             showDeletedPrompt(node, pos);
                             return;
                         }
                     }
 
-                    if (isSearchList) {
-                        // Toggle expansion for classes in search results instead of opening editor
+                    if (isSearchList && !node.getChildren().isEmpty()) {
+                        // A search result that groups several hits expands instead.
                         toggleNode(node, pos);
-                    } else if (listener != null) {
-                        listener.onNodeClick(node);
+                    } else {
+                        // Leaf class results must open the editor. Swallowing the
+                        // click into toggleNode() made tapping a "Class name"
+                        // result look like nothing happened.
+                        markOpened(node, pos);
+                        if (listener != null) listener.onNodeClick(node);
                     }
                 } else {
+                    Haptics.perform(v, Haptics.Event.SELECTION);
                     toggleChecked(node);
                 }
             }
         });
 
         holder.checkBox.setOnClickListener(v -> {
+            Haptics.perform(v, Haptics.Event.SELECTION);
             int pos = holder.getBindingAdapterPosition();
             if (pos != RecyclerView.NO_POSITION) toggleChecked(visibleNodes.get(pos));
         });
@@ -427,9 +477,21 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
             }
         } else {
             if (highlightedFullName != null && highlightedFullName.equals(node.getFullName())) {
-                //holder.itemContent.setBackgroundColor(0xFFE1F5FE);
-                holder.lastBackgroundRes = -1;
+                if (holder.lastHighlightedName == null) {
+                    TypedValue outValue = new TypedValue();
+                    if (context.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)) {
+                        holder.itemContent.setBackgroundResource(outValue.resourceId);
+                    }
+                    holder.itemContent.setBackgroundTintList(ColorStateList.valueOf(
+                            resolveAttrColor(com.google.android.material.R.attr.colorSecondaryContainer, 0xFFD6E3F0)));
+                    holder.lastHighlightedName = highlightedFullName;
+                }
             } else {
+                if (holder.lastHighlightedName != null) {
+                    holder.itemContent.setBackgroundTintList(null);
+                    holder.lastHighlightedName = null;
+                    holder.lastBackgroundRes = -2;
+                }
                 if (holder.lastBackgroundRes != 0) {
                     TypedValue outValue = new TypedValue();
                     context.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
@@ -437,6 +499,22 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
                     holder.lastBackgroundRes = 0;
                 }
             }
+        }
+
+        // 4b. Visited results are dimmed so already-opened rows stand apart like hidden files (0.55f alpha).
+        boolean visited = (isSearchList || isHistory) && isOpened(node);
+        float wantedAlpha = visited ? 0.55f : 1.0f;
+        holder.itemView.setAlpha(wantedAlpha);
+        if (holder.itemContent != null) holder.itemContent.setAlpha(wantedAlpha);
+        int wantedTextColor = visited ? openedTextColorResolved : defaultTextColor;
+        if (holder.name != null) {
+            holder.name.setAlpha(wantedAlpha);
+            if (holder.name.getCurrentTextColor() != wantedTextColor) {
+                holder.name.setTextColor(wantedTextColor);
+            }
+        }
+        if (holder.subtitle != null) {
+            holder.subtitle.setAlpha(wantedAlpha);
         }
 
         // 5. Indentation
@@ -555,11 +633,12 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
             String suffix = (endLimit < text.length()) ? "..." : "";
             String displayText = prefix + text.substring(startLimit, endLimit).replace("\n", " ").replace("\r", " ") + suffix;
 
+            int matchColor = resolveAttrColor(com.google.android.material.R.attr.colorTertiaryContainer, 0xFFB3E5FC);
             SpannableString spannable = new SpannableString(displayText);
             String lowerDisplay = displayText.toLowerCase();
             int s = 0;
             while ((s = lowerDisplay.indexOf(lowerQuery, s)) != -1) {
-                spannable.setSpan(new BackgroundColorSpan(0xFFB3E5FC), s, s + query.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                spannable.setSpan(new BackgroundColorSpan(matchColor), s, s + query.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
                 s += query.length();
             }
             node.setCachedSpannedName(spannable);
@@ -573,6 +652,9 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
 
     @SuppressLint("NotifyDataSetChanged")
     private void handleLongClick(View v, TreeNode node, int pos) {
+        Haptics.perform(v, isSelectionMode
+                ? Haptics.Event.SELECTION
+                : Haptics.Event.LONG_PRESS);
         if (isSelectionMode) {
             if (initialLongPressPosition == -1) {
                 initialLongPressPosition = pos;
@@ -604,14 +686,14 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
     }
 
     private boolean isNodeDeleted(TreeNode node) {
-        return DexEditorActivity.classTree != null && !DexEditorActivity.classTree.classMap.containsKey(node.getFullName());
+        return ((DexEditorActivity) context).classTree != null && !((DexEditorActivity) context).classTree.classMap.containsKey(node.getFullName());
     }
 
     private boolean isNodeDeletedCached(TreeNode node) {
         String fullName = node.getFullName();
         Boolean deleted = deletedStateCache.get(fullName);
         if (deleted == null) {
-            deleted = DexEditorActivity.classTree != null && !DexEditorActivity.classTree.classMap.containsKey(fullName);
+            deleted = ((DexEditorActivity) context).classTree != null && !((DexEditorActivity) context).classTree.classMap.containsKey(fullName);
             deletedStateCache.put(fullName, deleted);
         }
         return deleted;
@@ -849,7 +931,6 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
             popup.getMenu().add("Copy");
         }
         popup.getMenu().add("Add");
-        popup.getMenu().add("Import");
         popup.getMenu().add("Delete");
         popup.getMenu().add("Rename");
         popup.getMenu().add("Batch operations");
@@ -865,6 +946,9 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
                     break;
                 case "Delete":
                     showDeleteDialog(node, position);
+                    break;
+                case "Add":
+                    if (listener != null) listener.onAddClass(node);
                     break;
                 case "Batch operations":
                     isSelectionMode = true;
@@ -1051,6 +1135,9 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
 
         default void onSearch(TreeNode node) {
         }
+
+        default void onAddClass(TreeNode node) {
+        }
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
@@ -1073,6 +1160,7 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
         int lastBackgroundType = -1;
         int lastBackgroundRes = -2;
         CharSequence lastName = null;
+        String lastHighlightedName = null;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);

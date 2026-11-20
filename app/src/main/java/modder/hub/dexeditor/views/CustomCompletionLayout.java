@@ -52,6 +52,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
+import io.github.abdurazaaqmohammed.ui.common.util.Haptics;
 import io.github.rosemoe.sora.widget.component.EditorAutoCompletion;
 import io.github.rosemoe.sora.widget.component.CompletionLayout;
 import io.github.rosemoe.sora.widget.schemes.EditorColorScheme;
@@ -129,6 +130,8 @@ public class CustomCompletionLayout implements CompletionLayout {
 		// Traditional click listener instead of lambda
 		listView.setOnItemClickListener((parent, view, position, id) -> {
             try {
+                Haptics.perform(view,
+                        Haptics.Event.ACTION);
                 editorAutoCompletion.select(position);
             } catch (Exception e) {
                 e.printStackTrace(System.err);
@@ -144,7 +147,7 @@ public class CustomCompletionLayout implements CompletionLayout {
 		GradientDrawable gd = new GradientDrawable();
 		gd.setCornerRadius(0);
 		gd.setStroke(1, colorScheme.getColor(EditorColorScheme.COMPLETION_WND_CORNER));
-		gd.setColor(Color.WHITE);
+		gd.setColor(colorScheme.getColor(EditorColorScheme.COMPLETION_WND_BACKGROUND));
 		rootView.setBackground(gd);
 		
 		setRootViewOutlineProvider(rootView);
@@ -193,12 +196,24 @@ public class CustomCompletionLayout implements CompletionLayout {
 	@Override
 	public void ensureListPositionVisible(int position, int increment) {
 		listView.post(() -> {
-            while (listView.getFirstVisiblePosition() + 1 > position && listView.canScrollList(-1)) {
-                performScrollList(increment / 2);
-            }
-            while (listView.getLastVisiblePosition() - 1 < position && listView.canScrollList(1)) {
-                performScrollList(-increment / 2);
-            }
-        });
+			if (position == 0 && increment == 0) {
+				listView.setSelectionFromTop(0, 0);
+				return;
+			}
+			int upScrolls = 0;
+			int step = increment != 0 ? Math.abs(increment) / 2 : 20;
+			while (listView.getFirstVisiblePosition() + 1 > position && listView.canScrollList(-1) && upScrolls < 30) {
+				performScrollList(step);
+				upScrolls++;
+			}
+			int downScrolls = 0;
+			while (listView.getLastVisiblePosition() - 1 < position && listView.canScrollList(1) && downScrolls < 30) {
+				performScrollList(-step);
+				downScrolls++;
+			}
+			if (listView.getFirstVisiblePosition() > position || listView.getLastVisiblePosition() < position) {
+				listView.setSelection(position);
+			}
+		});
 	}
 }

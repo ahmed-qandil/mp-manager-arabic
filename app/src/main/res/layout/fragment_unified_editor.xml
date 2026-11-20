@@ -118,16 +118,24 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <ImageButton
-                android:id="@+id/btn_find"
-            android:contentDescription="@string/search"
+                android:id="@+id/btn_search_prev"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/baseline_search_24" />
+                android:contentDescription="@string/previous"
+                android:src="@drawable/ic_arrow_up_mt" />
+
+            <ImageButton
+                android:id="@+id/btn_search_next"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/next"
+                android:src="@drawable/ic_arrow_down_mt" />
 
             <ImageButton
                 android:id="@+id/btn_replace_toggle"
-            android:contentDescription="@string/replace"
+                android:contentDescription="@string/replace"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
@@ -135,7 +143,7 @@
 
             <ImageButton
                 android:id="@+id/btn_search_menu"
-            android:contentDescription="@string/cd_search_options"
+                android:contentDescription="@string/cd_search_options"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
@@ -143,7 +151,7 @@
 
             <ImageButton
                 android:id="@+id/btn_stop_search"
-            android:contentDescription="@string/close"
+                android:contentDescription="@string/close"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
@@ -219,19 +227,11 @@
 <!--            android:layout_height="match_parent" />-->
 <!--    </HorizontalScrollView>-->
 
-    <HorizontalScrollView
-        android:id="@+id/bottom_bar_scroll"
+    <android.zero.studio.widget.editor.symbolinput.AdvancedSymbolInputView
+        android:id="@+id/symbol_input_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?attr/colorSurfaceVariant"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:id="@+id/bottom_bar_layout"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="4dp" />
-    </HorizontalScrollView>
+        android:elevation="8dp" />
 
 </LinearLayout>

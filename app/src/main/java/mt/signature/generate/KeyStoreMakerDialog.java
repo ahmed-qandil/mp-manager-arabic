@@ -99,9 +99,10 @@ import java.util.Date;
 import java.util.Random;
 
 import io.github.abdurazaaqmohammed.MPManager.R;
-import io.github.abdurazaaqmohammed.utils.ErrorUtil;
-import io.github.abdurazaaqmohammed.utils.FileUtils;
-import io.github.abdurazaaqmohammed.utils.PasswordEncryptor;
+import io.github.abdurazaaqmohammed.data.prefs.UiPrefs;
+import io.github.abdurazaaqmohammed.util.misc.ErrorUtil;
+import io.github.abdurazaaqmohammed.util.io.FileUtils;
+import io.github.abdurazaaqmohammed.util.hash.PasswordEncryptor;
 
 public class KeyStoreMakerDialog extends DialogFragment {
 
@@ -234,6 +235,18 @@ public class KeyStoreMakerDialog extends DialogFragment {
 
         // Set default country
         country.setText(requireContext().getResources().getConfiguration().locale.getCountry());
+
+        try {
+            File kDir = UiPrefs.keysDir(requireContext());
+            String extPath = Environment.getExternalStorageDirectory().getAbsolutePath();
+            String relPath = kDir.getAbsolutePath();
+            if (relPath.startsWith(extPath)) {
+                relPath = relPath.substring(extPath.length());
+            }
+            if (!relPath.endsWith("/")) relPath += "/";
+            directory.setText(relPath);
+        } catch (Exception ignored) {
+        }
 
         // Set listeners
         setupListeners();

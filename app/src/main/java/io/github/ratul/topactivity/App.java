@@ -17,6 +17,7 @@
 package io.github.ratul.topactivity;
 
 import android.app.Activity;
+import android.app.Application;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.ClipData;
@@ -27,18 +28,22 @@ import android.os.Build;
 import android.widget.Toast;
 
 import io.github.abdurazaaqmohammed.plugins.packs.PackManager;
+import io.github.abdurazaaqmohammed.privilege.backend.DhizukuBackend;
+import io.github.abdurazaaqmohammed.privilege.backend.RootBackend;
+import io.github.abdurazaaqmohammed.privilege.backend.ShizukuBackend;
+import io.github.abdurazaaqmohammed.privilege.internal.Registry;
 import io.github.codehasan.colorpicker.extensions.Extensions;
 
 import androidx.core.app.NotificationManagerCompat;
-import androidx.multidex.MultiDexApplication;
 
 import io.github.abdurazaaqmohammed.MPManager.R;
 import io.github.abdurazaaqmohammed.app.ServiceLocator;
-import io.github.abdurazaaqmohammed.utils.AppLogs;
+import io.github.abdurazaaqmohammed.data.DexWorkspaceStore;
+import io.github.abdurazaaqmohammed.util.misc.AppLogs;
 import io.github.ratul.topactivity.manager.NotificationUiManager;
 import io.github.ratul.topactivity.ui.ClipboardActivity;
 
-public class App extends MultiDexApplication {
+public class App extends Application {
 
     private static App instance;
 
@@ -67,6 +72,15 @@ public class App extends MultiDexApplication {
         super.onCreate();
         instance = this;
         ServiceLocator.init(this);
+        try {
+            DexWorkspaceStore.initialize(getFilesDir());
+        } catch (java.io.IOException ignored) {
+        }
+        // Privilege layer (M3/M4): register the available backends. Selection
+        // order lives in Registry: DHIZUKU > SHIZUKU > ROOT > NONE.
+        Registry.register(DhizukuBackend.get());
+        Registry.register(ShizukuBackend.get());
+        Registry.register(RootBackend.get());
         // Cold-start optimization: each pack costs an asset read, a signature
         // check (PackageManager IPC), a resources.arsc parse and a
         // DexClassLoader dexopt. None of it is needed before first paint;
@@ -79,6 +93,15 @@ public class App extends MultiDexApplication {
             } catch (Exception ignored) {
             }
         }, "packs-load").start();
+        new Thread(() -> {
+            try {
+                // Allow a restored task to claim its existing workspace before orphan cleanup.
+                Thread.sleep(60_000);
+                DexWorkspaceStore.cleanup(getFilesDir(), getCacheDir());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "dex-workspace-cleanup").start();
         clipboardManager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -96,9 +119,20 @@ public class App extends MultiDexApplication {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             instance.clipboardManager.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.app_name), str));
         } else {
-            context.startActivity(new Intent(context, ClipboardActivity.class)
-                    .putExtra(Intent.EXTRA_TEXT, str)
-                    .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            try {
+                context.startActivity(new Intent(context, ClipboardActivity.class)
+                        .putExtra(Intent.EXTRA_TEXT, str)
+                        .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception e) {
+                // Launching an activity from the background can be blocked by the
+                // system; writing the clip directly always works (only *reading*
+                // the clipboard is background-restricted), so fall back to that
+                // instead of crashing.
+                try {
+                    instance.clipboardManager.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.app_name), str));
+                } catch (Exception ignored) {
+                }
+            }
         }
         showToast(context, msg);
     }

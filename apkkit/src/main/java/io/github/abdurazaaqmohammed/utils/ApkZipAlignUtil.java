@@ -36,16 +36,26 @@ public final class ApkZipAlignUtil {
     private static final int FLAG_DESCRIPTOR = 0x08;
     private static final int FLAG_UTF8 = 0x800;
 
+    /**
+     * Entries Android actually requires uncompressed: the manifest and the resource
+     * table (4-byte aligned, checked separately). res/ payload files follow the same
+     * compression rules as any other entry - Play-delivered APKs deflate them too -
+     * so the optimizer paths are not forced to inflate them.
+     */
     public static boolean mustStore(String name) {
         if (name == null) return false;
         return name.equals("AndroidManifest.xml")
-                || name.equals("resources.arsc")
-                || (name.startsWith("res/") && !name.endsWith(".xml"));
+                || name.equals("resources.arsc");
     }
 
     private static int alignFor(String name, int method) {
         if (name.equals("resources.arsc")) return ALIGN_RES_ARSC;
+        // Xposed-patcher engines embed their native libs under assets/ and mmap
+        // them straight out of the APK (base.apk!/...), which needs 4096-aligned
+        // stored entries — same requirement as lib/*.so.
         if (method == 0 && name.startsWith("lib/") && name.endsWith(".so")) return 4096;
+        if (method == 0 && name.startsWith("assets/") && name.endsWith(".so")) return 4096;
+        if (method == 0 && name.startsWith("assets/") && name.endsWith("/origin.apk")) return 4096;
         return 0;
     }
 
@@ -86,6 +96,18 @@ public final class ApkZipAlignUtil {
                         if (dataOff % ALIGN_RES_ARSC != 0) {
                             return "resources.arsc data at offset " + dataOff
                                     + " is not 4-byte aligned";
+                        }
+                    }
+                    // Page-aligned stored native libraries are required when the
+                    // installer mmaps them (extractNativeLibs=false); unaligned libs
+                    // fail with INSTALL_FAILED_NO_MATCHING_ABIS res=-113.
+                    int align = alignFor(name, e.method);
+                    if (align > 0 && e.method == 0) {
+                        LocalHeader lh = readLocalHeader(raf, e.localOffset);
+                        long dataOff = e.localOffset + lh.headerLen;
+                        if (dataOff % align != 0) {
+                            return name + " data at offset " + dataOff
+                                    + " is not " + align + "-byte aligned";
                         }
                     }
                 }
@@ -164,7 +186,11 @@ public final class ApkZipAlignUtil {
         CDEntry n = e.copy();
         n.localOffset = off;
         n.flags = flags;
-        n.extra = extra;
+        // Central-directory extra must stay as the ORIGINAL central extra
+        // (Gradle leaves it empty for .so; padding belongs only in the local
+        // header). Copying the local align blob into central makes malformed
+        // (ID=0) central extras and breaks PackageInstaller on some ROMs
+        // ("Failed to extract native libraries") + other strict parsers.
         return n;
     }
 
@@ -204,7 +230,6 @@ public final class ApkZipAlignUtil {
         n.crc = (int) crc.getValue();
         n.compSize = size;
         n.uncompSize = size;
-        n.extra = extra;
         return n;
     }
 
@@ -238,7 +263,6 @@ public final class ApkZipAlignUtil {
         out_e.crc = (int) crc.getValue();
         out_e.compSize = bytes.length;
         out_e.uncompSize = bytes.length;
-        out_e.extra = extra;
         return out_e;
     }
 

@@ -101,20 +101,24 @@ import com.android.tools.smali.dexlib2.dexbacked.*;
 
 import io.github.abdurazaaqmohammed.MPManager.R;
 import io.github.abdurazaaqmohammed.ui.UiFields;
-import io.github.abdurazaaqmohammed.utils.CopyUtil;
-import io.github.abdurazaaqmohammed.utils.SearchHistoryDropdown;
-import io.github.abdurazaaqmohammed.utils.SearchHistoryHelper;
+import io.github.abdurazaaqmohammed.util.io.CopyUtil;
+import io.github.abdurazaaqmohammed.ui.common.util.KeyboardUtil;
+import io.github.abdurazaaqmohammed.data.prefs.SearchHistoryDropdown;
+import io.github.abdurazaaqmohammed.data.prefs.SearchHistoryHelper;
 import io.github.codehasan.colorpicker.extensions.Extensions;
 import modder.hub.dexeditor.activity.DexEditorActivity;
 import modder.hub.dexeditor.adapter.TreeAdapter;
 import modder.hub.dexeditor.model.TreeNode;
 import modder.hub.dexeditor.smali.SharedSmaliUtils;
+import modder.hub.dexeditor.smali.SmaliHelper;
 import modder.hub.dexeditor.utils.DexUsageHelper;
 import modder.hub.dexeditor.utils.Notify_MT;
+import modder.hub.dexeditor.utils.RegexGuard;
 import modder.hub.dexeditor.utils.TreeHelper;
+import modder.hub.dexeditor.utils.SmaliSearchText;
 import modder.hub.dexeditor.views.AlertProgress;
 import modder.hub.dexeditor.views.FastScrollerRecyclerView;
-import io.github.abdurazaaqmohammed.ui.fragment.UnifiedEditorFragment;
+import io.github.abdurazaaqmohammed.ui.editor.UnifiedEditorFragment;
 
 // Author : @developer-krushna
 // Got some LOGICS from AI but thought , idea other resources copied from mt manager interface
@@ -164,7 +168,19 @@ public class SearchFragment extends Fragment {
                 @Override
                 public void onNodeClick(TreeNode node) {
                     if (node.isSnippet()) {
-                        activity.openClassAtLine(node.getFullName(), node.getLineNumber(), currentQuery);
+                        String query = currentQuery;
+                        if (query == null || query.isEmpty()) {
+                            // Extract literal string if snippet is in format opcode "literal"
+                            String name = node.getName();
+                            int firstQuote = name.indexOf('"');
+                            int lastQuote = name.lastIndexOf('"');
+                            if (firstQuote != -1 && lastQuote > firstQuote) {
+                                query = name.substring(firstQuote + 1, lastQuote);
+                            } else {
+                                query = name;
+                            }
+                        }
+                        activity.openClassAtLine(node.getFullName(), node.getLineNumber(), query);
                     } else if (!node.isDirectory()) {
                         activity.openClass(node.getFullName());
                     }
@@ -225,11 +241,15 @@ public class SearchFragment extends Fragment {
             activity.pendingUsageSearch = null;
             r.run();
         }
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
     }
 
     public void refreshUI() {
         if (adapter != null) {
             adapter.refreshVisibleNodes();
+            adapter.notifyDataSetChanged();
             updateSearchInfoBar();
         }
     }
@@ -265,7 +285,7 @@ public class SearchFragment extends Fragment {
         List<DexEditorActivity.EditorTab> modifiedTabs = new ArrayList<>();
         DexEditorActivity activity = (DexEditorActivity) getActivity();
         if (activity != null) {
-            for (DexEditorActivity.EditorTab tab : DexEditorActivity.tabs) {
+            for (DexEditorActivity.EditorTab tab : activity.tabs) {
                 if (tab.isModified) {
                     modifiedTabs.add(tab);
                 }
@@ -448,7 +468,17 @@ public class SearchFragment extends Fragment {
         TextView tvExcludeList = dialogView.findViewById(R.id.tv_exclude_list);
 
         SharedPreferences prefs = requireContext().getSharedPreferences("search_prefs", Context.MODE_PRIVATE);
+        // Options persist across sessions (search_prefs), not just this fragment.
         lastUseExcludeList = prefs.getBoolean("use_exclude_list", false);
+        lastIsRegex = prefs.getBoolean("is_regex", false);
+        lastMatchCase = prefs.getBoolean("match_case", lastMatchCase);
+        lastExactlyMatch = prefs.getBoolean("exactly_match", lastExactlyMatch);
+        lastIsHex = prefs.getBoolean("is_hex", lastIsHex);
+        lastSearchSubfolders = prefs.getBoolean("search_subfolders", lastSearchSubfolders);
+        String savedType = prefs.getString("search_type", null);
+        if (savedType != null) lastSearchType = savedType;
+        String savedPath = prefs.getString("search_path", null);
+        if (savedPath != null && !savedPath.isEmpty()) lastSearchPath = savedPath;
 
         if (lastSearchQuery == null || lastSearchQuery.isEmpty())
             lastSearchQuery = SearchHistoryHelper.lastQuery(requireContext(), SearchHistoryHelper.KEY_DEX);
@@ -543,7 +573,7 @@ public class SearchFragment extends Fragment {
                 .setNegativeButton(android.R.string.cancel, null)
                 .create();
 
-        io.github.abdurazaaqmohammed.utils.KeyboardUtil.focusOnShow(dialog, etFind,
+        KeyboardUtil.focusOnShow(dialog, etFind,
                 lastSearchQuery != null && !lastSearchQuery.isEmpty());
         dialog.show();
 
@@ -560,14 +590,35 @@ public class SearchFragment extends Fragment {
                     Extensions.showMessage(_context, "Value format error");
                     return; }
             }
+            lastMatchCase = cbMatchCase.isChecked(); lastIsRegex = cbRegex.isChecked(); lastIsHex = isHex;
+            // "Exactly match" is hidden for Smali (a whole class is never equal to
+            // the query), but hiding a checkbox does not uncheck it. It used to
+            // stay checked from an earlier "Class name" search and made every
+            // Smali search return nothing.
+            lastExactlyMatch = cbExactlyMatch.isChecked();
+            boolean exactlyMatchForType = lastExactlyMatch && !type.equals("Smali");
+            if (lastIsRegex && !type.equals("Integer")) {
+                String regexError = RegexGuard.validate(query, lastMatchCase);
+                if (regexError != null) {
+                    Extensions.showMessage(requireActivity(), regexError);
+                    return; }
+                if (RegexGuard.mayBacktrackCatastrophically(query))
+                    Extensions.showMessage(requireActivity(), "This pattern may take a very long time on large files"); }
             lastSearchQuery = query; lastSearchType = type;
+            prefs.edit().putBoolean("is_regex", lastIsRegex)
+                    .putBoolean("match_case", lastMatchCase)
+                    .putBoolean("exactly_match", lastExactlyMatch)
+                    .putBoolean("is_hex", lastIsHex)
+                    .putBoolean("search_subfolders", lastSearchSubfolders)
+                    .putString("search_type", lastSearchType)
+                    .putString("search_path", lastSearchPath)
+                    .apply();
             if (!query.trim().isEmpty()) SearchHistoryHelper.push(requireContext(), SearchHistoryHelper.KEY_DEX, query);
             if (!searchInResults) { lastSearchPath = path; lastSearchSubfolders = cbSearchSubfolders.isChecked(); lastUseExcludeList = useExcludeList; prefs.edit().putBoolean("use_exclude_list", useExcludeList).apply(); }
-            lastMatchCase = cbMatchCase.isChecked(); lastIsRegex = cbRegex.isChecked(); lastExactlyMatch = cbExactlyMatch.isChecked(); lastIsHex = isHex;
             List<String> scopeClasses = null;
             if (searchInResults) { scopeClasses = new ArrayList<>(); collectClassFullNames(searchResults, scopeClasses); }
             searchResults.clear(); currentQuery = null; adapter.refreshVisibleNodes(); updateUIState();
-            new SearchTask(SearchFragment.this, query, path, type, lastSearchSubfolders, lastMatchCase, lastIsRegex, lastExactlyMatch, isHex, scopeClasses, useExcludeList).start();
+            new SearchTask(SearchFragment.this, query, path, type, lastSearchSubfolders, lastMatchCase, lastIsRegex, exactlyMatchForType, isHex, scopeClasses, useExcludeList).start();
             dialog.dismiss();
         });
     }
@@ -591,6 +642,13 @@ public class SearchFragment extends Fragment {
         layoutExcludeList.setVisibility(View.GONE);
         cbSearchSubfolders.setVisibility(View.GONE);
         cbHex.setVisibility(View.GONE);
+
+        // Same persisted options as the search dialog, so a fresh session
+        // does not silently reset match case / regex / exactly-match.
+        SharedPreferences replacePrefs = requireContext().getSharedPreferences("search_prefs", Context.MODE_PRIVATE);
+        lastIsRegex = replacePrefs.getBoolean("is_regex", lastIsRegex);
+        lastMatchCase = replacePrefs.getBoolean("match_case", lastMatchCase);
+        lastExactlyMatch = replacePrefs.getBoolean("exactly_match", lastExactlyMatch);
 
         etFind.setText(lastSearchQuery);
         etReplaceWith.setText(lastReplaceWith);
@@ -637,19 +695,44 @@ public class SearchFragment extends Fragment {
         });
 
         // Setting up the replace dialog with options like regex and match case
-        new MaterialAlertDialogBuilder(requireContext())
+        AlertDialog replaceDialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.replace)
                 .setView(dialogView)
-                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                    String find = etFind.getText().toString(), replace = etReplaceWith.getText().toString(), type = spinnerSearchType.getSelectedItem().toString();
-                    lastSearchQuery = find; lastReplaceWith = replace; lastMatchCase = cbMatchCase.isChecked(); lastIsRegex = cbRegex.isChecked(); lastExactlyMatch = cbExactlyMatch.isChecked();
-                    if (!find.trim().isEmpty()) SearchHistoryHelper.push(requireContext(), SearchHistoryHelper.KEY_DEX, find);
-                    List<String> scopeClasses = new ArrayList<>();
-                    collectClassFullNames(searchResults, scopeClasses);
-                    new ReplaceTask(SearchFragment.this, find, replace, type, lastMatchCase, lastIsRegex, lastExactlyMatch, scopeClasses).start();
-                })
+                .setPositiveButton(android.R.string.ok, null)
                 .setNegativeButton(android.R.string.cancel, null)
-                .show();
+                .create();
+        KeyboardUtil.focusOnShow(replaceDialog, etFind,
+                lastSearchQuery != null && !lastSearchQuery.isEmpty());
+        replaceDialog.show();
+
+        // Set after show() so an unusable pattern keeps the dialog open instead
+        // of dismissing it and losing the typed query.
+        replaceDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String find = etFind.getText().toString(), replace = etReplaceWith.getText().toString(), type = spinnerSearchType.getSelectedItem().toString();
+            boolean regexMode = cbRegex.isChecked(), matchCaseMode = cbMatchCase.isChecked();
+            if (regexMode) {
+                String regexError = RegexGuard.validate(find, matchCaseMode);
+                if (regexError != null) {
+                    Extensions.showMessage(requireActivity(), regexError);
+                    return; }
+                if (RegexGuard.mayBacktrackCatastrophically(find))
+                    Extensions.showMessage(requireActivity(), "This pattern may take a very long time on large files");
+            }
+            lastSearchQuery = find; lastReplaceWith = replace; lastMatchCase = matchCaseMode; lastIsRegex = regexMode; lastExactlyMatch = cbExactlyMatch.isChecked();
+            replacePrefs.edit()
+                    .putBoolean("is_regex", lastIsRegex)
+                    .putBoolean("match_case", lastMatchCase)
+                    .putBoolean("exactly_match", lastExactlyMatch)
+                    .apply();
+            // Same rule as the search dialog: "Exactly match" is hidden for Smali
+            // and must not leak into the task.
+            boolean exactlyMatchForType = lastExactlyMatch && !type.equals("Smali");
+            if (!find.trim().isEmpty()) SearchHistoryHelper.push(requireContext(), SearchHistoryHelper.KEY_DEX, find);
+            List<String> scopeClasses = new ArrayList<>();
+            collectClassFullNames(searchResults, scopeClasses);
+            replaceDialog.dismiss();
+            new ReplaceTask(SearchFragment.this, find, replace, type, lastMatchCase, lastIsRegex, exactlyMatchForType, scopeClasses).start();
+        });
     }
 
 
@@ -658,33 +741,42 @@ public class SearchFragment extends Fragment {
      * This is a sensitive operation as it involves re-assembling classes.
      * It still carries some bugs which I left open people around
      */
-    /** Runs an exact "String" type search for the given text across the whole project. */
+    /**
+     * Runs an exact "String" type search for the given text across the whole project.
+     * Launched from the Strings tab ("Search" button), so the query is always a whole
+     * string literal: searching {@code .json} must not surface {@code example.json}.
+     */
     public void runStringSearch(String query) {
+        if (!(getActivity() instanceof DexEditorActivity activity) || getView() == null) {
+            if (getActivity() instanceof DexEditorActivity host) host.pendingStringSearchQuery = query;
+            return;
+        }
+        searchResults = activity.searchNodes;
         lastSearchQuery = query;
         lastSearchType = "String";
         lastMatchCase = true;
         lastIsRegex = false;
-        lastExactlyMatch = false;
+        lastExactlyMatch = true;
         searchResults.clear();
         currentQuery = null;
         if (adapter != null) adapter.refreshVisibleNodes();
         updateUIState();
-        new SearchTask(this, query, "/", "String", true, true, false, false, false, null, false).start();
+        new SearchTask(this, query, "/", "String", true, true, false, true, false, null, false).start();
     }
 
     public void runMethodUsageSearch(String slashClass, String methodName, String proto, boolean includeOverrides) {
         DexEditorActivity activity = (DexEditorActivity) getActivity();
-        if (activity == null || DexEditorActivity.classTree == null || methodName == null || proto == null) return;
+        if (activity == null || activity.classTree == null || methodName == null || proto == null) return;
         String declaring = DexUsageHelper.toType(slashClass);
         Set<String> defining = new HashSet<>();
         defining.add(declaring);
         if (includeOverrides) {
             try {
                 List<ClassDef> all;
-                synchronized (DexEditorActivity.classTree) {
-                    all = new ArrayList<>(DexEditorActivity.classTree.classMap.values());
+                synchronized (activity.classTree) {
+                    all = new ArrayList<>(activity.classTree.classMap.values());
                 }
-                for (DexUsageHelper.OverrideEntry e : DexUsageHelper.findOverrides(declaring, methodName, proto, all, DexEditorActivity.classTree.classMap)) {
+                for (DexUsageHelper.OverrideEntry e : DexUsageHelper.findOverrides(declaring, methodName, proto, all, activity.classTree.classMap)) {
                     try {
                         defining.add(e.holder.getType());
                     } catch (Exception ignored) {
@@ -714,7 +806,7 @@ public class SearchFragment extends Fragment {
 
     public void runOverrideSearch(String slashClass, String methodName, String proto) {
         DexEditorActivity activity = (DexEditorActivity) getActivity();
-        if (activity == null || DexEditorActivity.classTree == null || methodName == null || proto == null) return;
+        if (activity == null || activity.classTree == null || methodName == null || proto == null) return;
         String display = "overrides of " + methodName + proto;
         lastSearchQuery = display;
         lastSearchType = "Smali";
@@ -730,7 +822,7 @@ public class SearchFragment extends Fragment {
 
     public void runFieldUsageSearch(String slashClass, String fieldName, String fieldType, int mode) {
         DexEditorActivity activity = (DexEditorActivity) getActivity();
-        if (activity == null || DexEditorActivity.classTree == null || fieldName == null) return;
+        if (activity == null || activity.classTree == null || fieldName == null) return;
         String declaring = DexUsageHelper.toType(slashClass);
         List<String> needles = new ArrayList<>();
         needles.add(declaring + "->" + fieldName + ":");
@@ -755,7 +847,7 @@ public class SearchFragment extends Fragment {
 
     public void runClassUsageSearch(String slashClass) {
         DexEditorActivity activity = (DexEditorActivity) getActivity();
-        if (activity == null || DexEditorActivity.classTree == null || slashClass == null) return;
+        if (activity == null || activity.classTree == null || slashClass == null) return;
         List<String> needles = new ArrayList<>();
         needles.add(DexUsageHelper.toType(slashClass));
         String display = "usages of " + slashClass.replace('/', '.');
@@ -777,7 +869,7 @@ public class SearchFragment extends Fragment {
 
     public void runSubclassSearch(String slashClass) {
         DexEditorActivity activity = (DexEditorActivity) getActivity();
-        if (activity == null || DexEditorActivity.classTree == null || slashClass == null) return;
+        if (activity == null || activity.classTree == null || slashClass == null) return;
         String display = "subclasses of " + slashClass.replace('/', '.');
         lastSearchQuery = display;
         lastSearchType = "Class name";
@@ -792,6 +884,7 @@ public class SearchFragment extends Fragment {
     }
 
     private static class UsageSearchTask {
+        private DexEditorActivity editorActivity;
         static final int KIND_METHOD = 0;
         static final int KIND_FIELD = 1;
         static final int KIND_CLASS = 2;
@@ -851,8 +944,9 @@ public class SearchFragment extends Fragment {
                 }
             });
             progressDialog.show();
-            for (int i = 0; i < DexEditorActivity.tabs.size(); i++) {
-                DexEditorActivity.EditorTab tab = DexEditorActivity.tabs.get(i);
+            editorActivity = activity;
+            for (int i = 0; i < activity.tabs.size(); i++) {
+                DexEditorActivity.EditorTab tab = activity.tabs.get(i);
                 if (tab.type == 0) {
                     UnifiedEditorFragment editorFrag = activity.getFragmentAtIndex(i);
                     if (editorFrag != null && editorFrag.getEditor() != null) {
@@ -863,7 +957,7 @@ public class SearchFragment extends Fragment {
                 }
             }
             new Thread(() -> {
-                if (DexEditorActivity.classTree == null) {
+                if (editorActivity.classTree == null) {
                     mainHandler.post(() -> onPostExecute(new ArrayList<>()));
                     return;
                 }
@@ -874,10 +968,10 @@ public class SearchFragment extends Fragment {
                 }
                 List<ClassDef> classesToSearch;
                 Set<String> pendingKeys = new HashSet<>();
-                synchronized (DexEditorActivity.classTree) {
-                    classesToSearch = new ArrayList<>(DexEditorActivity.classTree.classMap.values());
+                synchronized (editorActivity.classTree) {
+                    classesToSearch = new ArrayList<>(editorActivity.classTree.classMap.values());
                     try {
-                        pendingKeys.addAll(DexEditorActivity.classTree.getPendingSmaliMap().keySet());
+                        pendingKeys.addAll(editorActivity.classTree.getPendingSmaliMap().keySet());
                     } catch (Exception ignored) {
                     }
                 }
@@ -937,14 +1031,14 @@ public class SearchFragment extends Fragment {
         private void runHierarchy(List<TreeNode> results, DexEditorActivity activity) {
             try {
                 List<ClassDef> all;
-                synchronized (DexEditorActivity.classTree) {
-                    all = new ArrayList<>(DexEditorActivity.classTree.classMap.values());
+                synchronized (activity.classTree) {
+                    all = new ArrayList<>(activity.classTree.classMap.values());
                 }
                 if (kind == KIND_SUBCLASS) {
                     String target = DexUsageHelper.toType(targetSlash);
                     List<ClassDef> subs;
-                    synchronized (DexEditorActivity.classTree) {
-                        subs = DexUsageHelper.findSubclasses(target, all, DexEditorActivity.classTree.classMap);
+                    synchronized (activity.classTree) {
+                        subs = DexUsageHelper.findSubclasses(target, all, activity.classTree.classMap);
                     }
                     for (ClassDef c : subs) {
                         if (isStopped) break;
@@ -960,8 +1054,8 @@ public class SearchFragment extends Fragment {
                 } else {
                     String declaring = DexUsageHelper.toType(targetSlash);
                     List<DexUsageHelper.OverrideEntry> overrides;
-                    synchronized (DexEditorActivity.classTree) {
-                        overrides = DexUsageHelper.findOverrides(declaring, targetName, targetProto, all, DexEditorActivity.classTree.classMap);
+                    synchronized (activity.classTree) {
+                        overrides = DexUsageHelper.findOverrides(declaring, targetName, targetProto, all, activity.classTree.classMap);
                     }
                     for (DexUsageHelper.OverrideEntry e : overrides) {
                         if (isStopped) break;
@@ -1209,7 +1303,7 @@ public class SearchFragment extends Fragment {
 
         private String generateSmaliSafe(ClassDef classDef) {
             try {
-                if (DexEditorActivity.classTree != null) return DexEditorActivity.classTree.getSmaliByType(classDef);
+                if (editorActivity.classTree != null) return editorActivity.classTree.getSmaliByType(classDef);
             } catch (Exception ignored) {
             }
             return "";
@@ -1321,6 +1415,8 @@ public class SearchFragment extends Fragment {
         }
     }
     private static class ReplaceTask {
+        private DexEditorActivity editorActivity;
+        private static final Pattern STRING_LITERAL = Pattern.compile("\"((?:\\\\.|[^\"\\\\])*)\"");
         private final WeakReference<SearchFragment> fragmentRef;
         private final String findQuery;
         private final String replaceWith;
@@ -1330,6 +1426,7 @@ public class SearchFragment extends Fragment {
         private final boolean exactlyMatch;
         private final List<String> scopeClasses;
         private final Pattern compiledPattern;
+        private final Pattern stringPattern;
         private final List<String> errorClasses = Collections.synchronizedList(new ArrayList<>());
         private final AtomicInteger replacedCount = new AtomicInteger(0);
         private final AtomicInteger affectedClasses = new AtomicInteger(0);
@@ -1350,14 +1447,20 @@ public class SearchFragment extends Fragment {
             this.type = type;
             this.matchCase = matchCase;
             this.isRegex = isRegex;
-            this.exactlyMatch = exactlyMatch;
+            this.exactlyMatch = exactlyMatch && !"Smali".equals(type);
             this.scopeClasses = scopeClasses;
 
             if (isRegex) {
-                int flags = matchCase ? 0 : Pattern.CASE_INSENSITIVE;
-                this.compiledPattern = Pattern.compile(findQuery, flags);
+                // The dialog validates first; this second check keeps a task
+                // built from any other entry point from crashing the process.
+                this.compiledPattern = RegexGuard.compile(findQuery, matchCase);
+                String literal = exactlyMatch ? RegexGuard.anchorWhole(findQuery) : findQuery;
+                this.stringPattern = RegexGuard.compile(literal, matchCase);
             } else {
                 this.compiledPattern = null;
+                this.stringPattern = Pattern.compile(
+                        exactlyMatch ? "^" + Pattern.quote(findQuery) + "$" : Pattern.quote(findQuery),
+                        matchCase ? 0 : Pattern.CASE_INSENSITIVE);
             }
         }
 
@@ -1379,8 +1482,9 @@ public class SearchFragment extends Fragment {
             progressDialog.show();
 
             // Collect open tabs content (must be on UI thread)
-            for (int i = 0; i < DexEditorActivity.tabs.size(); i++) {
-                DexEditorActivity.EditorTab tab = DexEditorActivity.tabs.get(i);
+            editorActivity = activity;
+            for (int i = 0; i < activity.tabs.size(); i++) {
+                DexEditorActivity.EditorTab tab = activity.tabs.get(i);
                 if (tab.type == 0) { // Smali
                     UnifiedEditorFragment editorFrag = activity.getFragmentAtIndex(i);
                     if (editorFrag != null && editorFrag.getEditor() != null) {
@@ -1395,7 +1499,7 @@ public class SearchFragment extends Fragment {
             ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
             new Thread(() -> {
-                if (DexEditorActivity.classTree == null) {
+                if (editorActivity.classTree == null) {
                     mainHandler.post(() -> progressDialog.dismiss());
                     return;
                 }
@@ -1404,7 +1508,7 @@ public class SearchFragment extends Fragment {
                 if (scopeClasses != null) {
                     classesToProcess.addAll(scopeClasses);
                 } else {
-                    for (ClassDef classDef : DexEditorActivity.classTree.classDefList) {
+                    for (ClassDef classDef : editorActivity.classTree.classDefList) {
                         String fullName = classDef.getType();
                         classesToProcess.add(fullName.substring(1, fullName.length() - 1));
                     }
@@ -1423,7 +1527,7 @@ public class SearchFragment extends Fragment {
                             if (openTabsContent.containsKey(className)) {
                                 originalText = openTabsContent.get(className);
                             } else {
-                                ClassDef classDef = DexEditorActivity.classTree.classMap.get(className);
+                                ClassDef classDef = editorActivity.classTree.classMap.get(className);
                                 if (classDef != null) {
                                     originalText = generateSmali(classDef);
                                 }
@@ -1444,23 +1548,21 @@ public class SearchFragment extends Fragment {
                                 int countInClass = 0;
 
                                 if (type.equals("String")) {
-                                    Matcher lm = Pattern.compile("\"((?:\\\\.|[^\"\\\\])*)\"").matcher(originalText);
+                                    Matcher lm = STRING_LITERAL.matcher(originalText);
                                     StringBuffer sb = new StringBuffer();
 
-                                    int flag = matchCase ? 0 : Pattern.CASE_INSENSITIVE;
-                                    String q1 = isRegex ? findQuery : Pattern.quote(findQuery);
-                                    String q2 = exactlyMatch ? "^" + q1 + "$" : q1;
-
-                                    Pattern innerFind = Pattern.compile(q2, flag);
-
                                     while (lm.find()) {
-                                        Matcher im = innerFind.matcher(lm.group(1));
+                                        Matcher im = stringPattern.matcher(lm.group(1));
                                         StringBuffer inner = new StringBuffer();
                                         while (im.find()) {
                                             countInClass++;
                                             try {
-                                                im.appendReplacement(inner, isRegex ? replaceWith : Matcher.quoteReplacement(replaceWith));
-                                            } catch (IndexOutOfBoundsException | IllegalArgumentException e) {
+                                                if (isRegex) {
+                                                    RegexGuard.appendCustomReplacement(im, inner, replaceWith);
+                                                } else {
+                                                    im.appendReplacement(inner, Matcher.quoteReplacement(RegexGuard.unescapeReplacement(replaceWith)));
+                                                }
+                                            } catch (Exception e) {
                                                 errorClasses.add(className + ": invalid replacement pattern - " + e.getMessage());
                                                 return;
                                             }
@@ -1479,9 +1581,8 @@ public class SearchFragment extends Fragment {
                                         while (m.find()) {
                                             countInClass++;
                                             try {
-                                                m.appendReplacement(sb, replaceWith);
-                                            } catch (IndexOutOfBoundsException | IllegalArgumentException e) {
-                                                // invalid group reference (e.g. $9 when there's no group 9)
+                                                RegexGuard.appendCustomReplacement(m, sb, replaceWith);
+                                            } catch (Exception e) {
                                                 errorClasses.add(className + ": invalid replacement pattern - " + e.getMessage());
                                                 return;
                                             }
@@ -1490,13 +1591,13 @@ public class SearchFragment extends Fragment {
                                         modifiedText = sb.toString();
                                     } else {
                                         String search = findQuery;
-                                        String replacement = replaceWith;
+                                        String replacement = RegexGuard.unescapeReplacement(replaceWith);
                                         if (matchCase) {
                                             countInClass = countOccurrences(originalText, search);
                                             modifiedText = originalText.replace(search, replacement);
                                         } else {
-                                            Pattern p = Pattern.compile(Pattern.quote(search), Pattern.CASE_INSENSITIVE);
-                                           Matcher m = p.matcher(originalText);
+                                            Pattern p = Pattern.compile(Pattern.quote(search), Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
+                                            Matcher m = p.matcher(originalText);
                                             StringBuffer sb = new StringBuffer();
                                             while (m.find()) {
                                                 countInClass++;
@@ -1511,9 +1612,9 @@ public class SearchFragment extends Fragment {
                                 if (countInClass > 0) {
                                     try {
                                         ClassDef newDef = Smali.assemble(modifiedText, SharedSmaliUtils.ASSEMBLE_OPTIONS, dexVersion);
-                                        DexEditorActivity.classTree.saveClassDefIfChanged(newDef, modifiedText);
+                                        editorActivity.classTree.saveClassDefIfChanged(newDef, modifiedText);
                                     } catch (Exception e) {
-                                        DexEditorActivity.classTree.saveSmali(className, modifiedText);
+                                        editorActivity.classTree.saveSmali(className, modifiedText);
                                         String errorMsg = e.getMessage();
                                         errorClasses.add(className + " (Saved as raw): " + errorMsg);
                                         synchronized (ReplaceTask.this) {
@@ -1541,6 +1642,13 @@ public class SearchFragment extends Fragment {
                                 }
                             }
                         } catch (Exception ignored) {
+                        } catch (Throwable t) {
+                            // A StackOverflowError inside a nested smali literal or a
+                            // backtracking regex must not kill the worker silently:
+                            // the task would hang on awaitTermination forever.
+                            isStopped = true;
+                            errorClasses.add(className + ": " + t);
+                            executor.shutdownNow();
                         }
 
                         final int processed = processedCount.incrementAndGet();
@@ -1555,6 +1663,7 @@ public class SearchFragment extends Fragment {
                 try {
                     executor.awaitTermination(1, TimeUnit.HOURS);
                 } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
                 }
 
                 mainHandler.post(() -> onPostExecute(activity));
@@ -1581,7 +1690,7 @@ public class SearchFragment extends Fragment {
         }
 
         private String generateSmali(ClassDef classDef) throws Exception {
-            if (DexEditorActivity.classTree != null) return DexEditorActivity.classTree.getSmaliByType(classDef);
+            if (editorActivity.classTree != null) return editorActivity.classTree.getSmaliByType(classDef);
             StringWriter sw = new StringWriter(16 * 1024);
             BaksmaliWriter bw = new BaksmaliWriter(sw);
             new ClassDefinition(SharedSmaliUtils.OPTIONS, classDef).writeTo(bw);
@@ -1602,8 +1711,8 @@ public class SearchFragment extends Fragment {
                     String className = entry.getKey();
                     String newText = entry.getValue();
 
-                    for (int i = 0; i < DexEditorActivity.tabs.size(); i++) {
-                        DexEditorActivity.EditorTab tab = DexEditorActivity.tabs.get(i);
+                    for (int i = 0; i < activity.tabs.size(); i++) {
+                        DexEditorActivity.EditorTab tab = activity.tabs.get(i);
                         if (tab.className.equals(className) && tab.type == 0) {
                             tab.content = newText;
                             tab.isModified = false;
@@ -1618,7 +1727,7 @@ public class SearchFragment extends Fragment {
             }
 
             activity.refreshExplorerPage(1);
-            DexEditorActivity.isChanged = true;
+            activity.isChanged = true;
         }
 
         // there is some problem with replacement , i have to review this part next time but serach metod you should try
@@ -1659,6 +1768,7 @@ public class SearchFragment extends Fragment {
      * 3. Efficient Matching: Case-insensitive search without new string allocations.
      */
     private static class SearchTask {
+        private DexEditorActivity editorActivity;
         private static final Object POOL_MATCH_CACHE_LOCK = new Object();
         /** Lazily materialised pool text: only built when the cheap fingerprint says "maybe". */
         private static final Map<DexBackedDexFile, char[]> POOL_TEXT_CACHE = new ConcurrentHashMap<>();
@@ -1696,7 +1806,9 @@ public class SearchFragment extends Fragment {
             this.searchSubfolders = searchSubfolders;
             this.matchCase = matchCase;
             this.isRegex = isRegex;
-            this.exactlyMatch = exactlyMatch;
+            // A Smali match is a substring of the generated class text, never the
+            // whole text, so an "exactly match" flag would match nothing.
+            this.exactlyMatch = exactlyMatch && !"Smali".equals(type);
             this.scopeClasses = scopeClasses;
 
             initSmaliKeywords();
@@ -1732,7 +1844,7 @@ public class SearchFragment extends Fragment {
                     }
                 }
             }
-            this.compiledPattern = isRegex ? Pattern.compile(query, matchCase ? 0 : Pattern.CASE_INSENSITIVE) : null;
+            this.compiledPattern = isRegex ? RegexGuard.compile(query, matchCase) : null;
 
             // Hoist everything the worker loop would otherwise recompute per class.
             // The pool pre-filter is a *conservative* filter (it can only skip a class that provably
@@ -1745,7 +1857,9 @@ public class SearchFragment extends Fragment {
             this.queryHasNewline = query.indexOf('\n') >= 0;
             this.excludeArray = excludeList.toArray(new String[0]);
             this.poolPrefilterEnabled = "Smali".equals(this.type) && !this.isRegex
-                    && query.length() >= 2 && !isCommonSmaliWord(query);
+                    && query.length() >= 2 && !isCommonSmaliWord(query)
+                    && !containsNonPoolContextChar(query)
+                    && !looksLikeSmaliToken(query);
         }
 
         private void initSmaliKeywords() {
@@ -1784,30 +1898,34 @@ public class SearchFragment extends Fragment {
             });
             progressDialog.show();
 
-            // Cache the content of open editors to search unsaved changes too
-            for (int i = 0; i < DexEditorActivity.tabs.size(); i++) {
-                DexEditorActivity.EditorTab tab = DexEditorActivity.tabs.get(i);
-                if (tab.type == 0) {
+            // Cache the content of open editors only if they have unsaved/modified changes
+            editorActivity = activity;
+            for (int i = 0; i < activity.tabs.size(); i++) {
+                DexEditorActivity.EditorTab tab = activity.tabs.get(i);
+                if (tab.type == 0 && tab.isModified) {
                     UnifiedEditorFragment editorFrag = activity.getFragmentAtIndex(i);
                     if (editorFrag != null && editorFrag.getEditor() != null) {
-                        openEditorsContent.put(tab.className, editorFrag.getEditor().getText().toString());
-                    } else if (tab.isModified) {
+                        String text = editorFrag.getEditor().getText().toString();
+                        if (!text.isEmpty()) {
+                            openEditorsContent.put(tab.className, text);
+                        }
+                    } else if (tab.content != null && !tab.content.isEmpty()) {
                         openEditorsContent.put(tab.className, tab.content);
                     }
                 }
             }
 
             new Thread(() -> {
-                if (DexEditorActivity.classTree == null) {
+                if (editorActivity.classTree == null) {
                     mainHandler.post(() -> onPostExecute(new ArrayList<>()));
                     return;
                 }
 
                 try {
-                    POOL_TEXT_CACHE.keySet().retainAll(DexEditorActivity.classTree.dexFiles);
-                    POOL_FILTER_CACHE.keySet().retainAll(DexEditorActivity.classTree.dexFiles);
+                    POOL_TEXT_CACHE.keySet().retainAll(editorActivity.classTree.dexFiles);
+                    POOL_FILTER_CACHE.keySet().retainAll(editorActivity.classTree.dexFiles);
                     synchronized (POOL_MATCH_CACHE_LOCK) {
-                        POOL_MATCH_CACHE.keySet().retainAll(DexEditorActivity.classTree.dexFiles);
+                        POOL_MATCH_CACHE.keySet().retainAll(editorActivity.classTree.dexFiles);
                     }
                 } catch (Exception ignored) {
                 }
@@ -1816,14 +1934,14 @@ public class SearchFragment extends Fragment {
                 List<ClassDef> classesToSearch = new ArrayList<>();
                 if (scopeClasses != null) {
                     for (String className : scopeClasses) {
-                        synchronized (DexEditorActivity.classTree) {
-                            ClassDef classDef = DexEditorActivity.classTree.classMap.get(className);
+                        synchronized (editorActivity.classTree) {
+                            ClassDef classDef = editorActivity.classTree.classMap.get(className);
                             if (classDef != null) classesToSearch.add(classDef);
                         }
                     }
                 } else {
-                    synchronized (DexEditorActivity.classTree) {
-                        classesToSearch.addAll(DexEditorActivity.classTree.classMap.values());
+                    synchronized (editorActivity.classTree) {
+                        classesToSearch.addAll(editorActivity.classTree.classMap.values());
                     }
                 }
 
@@ -1956,8 +2074,18 @@ public class SearchFragment extends Fragment {
 
                                     if (isRegex || queryHasNewline) {
                                             Pattern pattern = isRegex ? compiledPattern : Pattern.compile(Pattern.quote(query), matchCase ? 0 : Pattern.CASE_INSENSITIVE);
-                                            Matcher matcher = pattern.matcher(smali);
-                                            while (matcher.find()) {
+                                            Matcher matcher = RegexGuard.boundedMatcher(pattern, smali);
+                                            int lastLineStart = 0;
+                                            int lineIdx = 0;
+                                            while (true) {
+                                                if (isStopped || Thread.currentThread().isInterrupted()) return;
+                                                boolean found;
+                                                try {
+                                                    found = matcher.find();
+                                                } catch (StackOverflowError | OutOfMemoryError e) {
+                                                    stopSearchWithLimit(activity);
+                                                    return; }
+                                                if (!found) break;
                                                 if (foundCount.incrementAndGet() >= 250000) {
                                                     stopSearchWithLimit(activity);
                                                     return;
@@ -1966,8 +2094,14 @@ public class SearchFragment extends Fragment {
                                                 int lineStart = smali.lastIndexOf('\n', startPos) + 1;
                                                 int lineEnd = smali.indexOf('\n', startPos);
                                                 if (lineEnd == -1) lineEnd = smali.length();
+                                                // Matches arrive in source order, so the line index is
+                                                // advanced incrementally instead of rescanning from the
+                                                // top of the class for every hit.
+                                                if (lineStart != lastLineStart) {
+                                                    lineIdx += countNewlines(smali, lastLineStart, lineStart);
+                                                    lastLineStart = lineStart;
+                                                }
                                                 String lineText = smali.substring(lineStart, lineEnd);
-                                                int lineIdx = countLinesBefore(smali, lineStart);
                                                 TreeNode snippet = new TreeNode(lineText.trim(), className, 0, false);
                                                 snippet.setSnippet(true);
                                                 snippet.setLineNumber(lineIdx);
@@ -2013,7 +2147,7 @@ public class SearchFragment extends Fragment {
                                         if (foundCount.incrementAndGet() >= 250000) { stopSearchWithLimit(activity); return; }
                                         if (smali == null) smali = generateSmaliSafe(classDef);
                                         String snippetText = ".field " + AccessFlags.formatAccessFlagsForField(field.getAccessFlags()) + " " + field.getName() + ":" + field.getType();
-                                        int lineIdx = findLineOfText(smali, field.getName());
+                                        int lineIdx = SmaliSearchText.declarationLine(smali, ".field", field.getName() + ":" + field.getType());
                                         TreeNode snippet = new TreeNode(snippetText, className, 0, false);
                                         snippet.setSnippet(true);
                                         snippet.setLineNumber(lineIdx != -1 ? lineIdx : 0);
@@ -2032,7 +2166,7 @@ public class SearchFragment extends Fragment {
                                         for (MethodParameter param : method.getParameters()) desc.append(param.getType());
                                         desc.append(")").append(method.getReturnType());
                                         String snippetText = ".method " + AccessFlags.formatAccessFlagsForMethod(method.getAccessFlags()) + " " + method.getName() + desc;
-                                        int lineIdx = findLineOfText(smali, ".method " + AccessFlags.formatAccessFlagsForMethod(method.getAccessFlags()) + " " + method.getName());
+                                        int lineIdx = SmaliSearchText.declarationLine(smali, ".method", method.getName() + desc);
                                         TreeNode snippet = new TreeNode(snippetText, className, 0, false);
                                         snippet.setSnippet(true);
                                         snippet.setLineNumber(lineIdx != -1 ? lineIdx : 0);
@@ -2044,74 +2178,24 @@ public class SearchFragment extends Fragment {
                                 break;
                             case "String":
                                 String openContentStr = openEditorsContent.get(className);
-                                boolean hasPendingStr = DexEditorActivity.classTree.getPendingSmaliMap().containsKey(className);
-                                if (openContentStr != null || hasPendingStr) {
-                                    try {
-                                        smali = openContentStr != null ? openContentStr : DexEditorActivity.classTree.getSmaliByType(classDef);
-                                        int start = 0, end;
-                                        while ((end = smali.indexOf('\n', start)) != -1) {
-                                            String lineText = smali.substring(start, end);
-                                            if (lineText.contains("\"") && checkMatch(lineText)) {
-                                                if (foundCount.incrementAndGet() >= 250000) {
-                                                    stopSearchWithLimit(activity);
-                                                    return;
-                                                }
-                                                TreeNode snippet = new TreeNode(lineText.trim(), className, 0, false);
-                                                snippet.setSnippet(true);
-                                                snippet.setLineNumber(countLinesBefore(smali, start));
-                                                preHighlightSnippet(snippet, highlightQuery);
-                                                snippets.add(snippet);
-                                                match = true;
-                                            }
-                                            start = end + 1;
-                                        }
-                                    } catch (Exception ignored) {
+                                boolean hasPendingStr = editorActivity.classTree.getPendingSmaliMap().containsKey(className);
+                                // Keep the cheap dex-value precheck, but derive every result's
+                                // location from the actual displayed source. Raw pool strings
+                                // are escaped in smali, fields/annotations precede methods,
+                                // and dex iteration order is not source order.
+                                if (openContentStr != null || hasPendingStr || hasMatchingString(classDef)) {
+                                    smali = openContentStr != null ? openContentStr : generateSmaliSafe(classDef);
+                                    for (SmaliSearchText.Literal literal : SmaliSearchText.literals(smali)) {
+                                        if (isStopped || Thread.currentThread().isInterrupted()) return;
+                                        if (!checkMatch(literal.value())) continue;
+                                        if (foundCount.incrementAndGet() >= 250000) { stopSearchWithLimit(activity); return; }
+                                        TreeNode snippet = new TreeNode(literal.source(), className, 0, false);
+                                        snippet.setSnippet(true);
+                                        snippet.setLineNumber(literal.line());
+                                        preHighlightSnippet(snippet, highlightQuery);
+                                        snippets.add(snippet);
+                                        match = true;
                                     }
-                                } else {
-                                    for (Method method : classDef.getMethods()) {
-                                        MethodImplementation impl = method.getImplementation();
-                                        if (impl != null) {
-                                            for (Instruction inst : impl.getInstructions()) {
-                                                if (inst instanceof ReferenceInstruction) {
-                                                    Reference ref = ((ReferenceInstruction) inst).getReference();
-                                                    if (ref instanceof StringReference) {
-                                                        String str = ((StringReference) ref).getString();
-                                                        if (checkMatch(str)) {
-                                                            if (foundCount.incrementAndGet() >= 250000) { stopSearchWithLimit(activity); return; }
-                                                            if (smali == null) smali = generateSmaliSafe(classDef);
-                                                            String snippetText = inst.getOpcode().name + " ..., \"" + str + "\"";
-                                                            int lineIdx = findLineOfText(smali, "\"" + str + "\"");
-                                                            TreeNode snippet = new TreeNode(snippetText, className, 0, false);
-                                                            snippet.setSnippet(true);
-                                                            snippet.setLineNumber(lineIdx != -1 ? lineIdx : 0);
-                                                            preHighlightSnippet(snippet, highlightQuery);
-                                                            snippets.add(snippet);
-                                                            match = true;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    for (Field field : classDef.getFields()) {
-                                        EncodedValue initialValue = field.getInitialValue();
-                                        if (initialValue instanceof StringEncodedValue) {
-                                            String str = ((StringEncodedValue) initialValue).getValue();
-                                            if (checkMatch(str)) {
-                                                if (foundCount.incrementAndGet() >= 250000) { stopSearchWithLimit(activity); return; }
-                                                if (smali == null) smali = generateSmaliSafe(classDef);
-                                                String snippetText = ".field ... " + field.getName() + " = \"" + str + "\"";
-                                                int lineIdx = findLineOfText(smali, field.getName());
-                                                TreeNode snippet = new TreeNode(snippetText, className, 0, false);
-                                                snippet.setSnippet(true);
-                                                snippet.setLineNumber(lineIdx != -1 ? lineIdx : 0);
-                                                preHighlightSnippet(snippet, highlightQuery);
-                                                snippets.add(snippet);
-                                                match = true;
-                                            }
-                                        }
-                                    }
-                                    if (searchInAnnotations(classDef.getAnnotations(), className, snippets, smali, classDef)) match = true;
                                 }
                                 break;
                             case "Integer":
@@ -2252,7 +2336,7 @@ public class SearchFragment extends Fragment {
         }
 
         private boolean checkMatchInRange(String text, int start, int end) {
-            if (isRegex) return compiledPattern != null && compiledPattern.matcher(text.substring(start, end)).find();
+            if (isRegex) return compiledPattern != null && RegexGuard.boundedMatcher(compiledPattern, text.subSequence(start, end)).find();
             boolean ignoreCase = !matchCase;
             int len = query.length();
             int lastStart = end - len;
@@ -2269,9 +2353,75 @@ public class SearchFragment extends Fragment {
         }
 
         private boolean checkMatch(String text) {
-            if (isRegex) return compiledPattern != null && compiledPattern.matcher(text).find();
+            if (isRegex) {
+                if (compiledPattern == null) return false;
+                try {
+                    return RegexGuard.boundedMatcher(compiledPattern, text).find();
+                } catch (StackOverflowError | OutOfMemoryError e) {
+                    return false;
+                }
+            }
             if (matchCase) return exactlyMatch ? text.equals(query) : text.contains(query);
             return exactlyMatch ? text.equalsIgnoreCase(query) : containsIgnoreCase(text, query);
+        }
+
+        private boolean hasMatchingString(ClassDef def) {
+            if (matchingAnnotations(def.getAnnotations())) return true;
+            for (Field field : def.getFields()) {
+                if (matchingValue(field.getInitialValue()) || matchingAnnotations(field.getAnnotations())) return true;
+            }
+            for (Method method : def.getMethods()) {
+                if (matchingAnnotations(method.getAnnotations())) return true;
+                for (MethodParameter parameter : method.getParameters())
+                    if (matchingAnnotations(parameter.getAnnotations())) return true;
+                MethodImplementation implementation = method.getImplementation();
+                if (implementation == null) continue;
+                for (Instruction instruction : implementation.getInstructions()) {
+                    if (instruction instanceof ReferenceInstruction reference
+                            && reference.getReference() instanceof StringReference string
+                            && checkMatch(string.getString())) return true;
+                }
+            }
+            return false;
+        }
+
+        private boolean matchingAnnotations(Set<? extends Annotation> annotations) {
+            for (Annotation annotation : annotations)
+                for (AnnotationElement element : annotation.getElements())
+                    if (matchingValue(element.getValue())) return true;
+            return false;
+        }
+
+        private boolean matchingValue(EncodedValue value) {
+            if (value instanceof StringEncodedValue string) return checkMatch(string.getValue());
+            if (value instanceof ArrayEncodedValue array) {
+                for (EncodedValue child : array.getValue()) if (matchingValue(child)) return true;
+            } else if (value instanceof AnnotationEncodedValue annotation) {
+                for (AnnotationElement element : annotation.getElements())
+                    if (matchingValue(element.getValue())) return true;
+            }
+            return false;
+        }
+
+        /**
+         * True when the first word of the query has the shape of a smali opcode or
+         * directive ({@code move-result}, {@code const/4}, {@code invoke-static/range}).
+         *
+         * <p>Those never appear in the DEX string pool, so the pool pre-filter would
+         * drop every class for them. The keyword list alone cannot be relied on: it
+         * is hand-written and misses entries like {@code const/4}, which has no
+         * dash to disable the filter through {@link #containsNonPoolContextChar}.</p>
+         */
+        private static boolean looksLikeSmaliToken(String query) {
+            int end = 0;
+            while (end < query.length() && !Character.isWhitespace(query.charAt(end))) end++;
+            if (end == 0) return false;
+            for (int i = 0; i < end; i++) {
+                char c = query.charAt(i);
+                boolean ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '/';
+                if (!ok) return false;
+            }
+            return true;
         }
 
         private boolean isCommonSmaliWord(String query) {
@@ -2281,6 +2431,23 @@ public class SearchFragment extends Fragment {
             // Literals or register ranges
             char first = query.charAt(0);
             return !Character.isLetter(first) && first != 'L';
+        }
+
+        /**
+         * The pool pre-filter can only skip a class when the whole query provably occurs
+         * inside the dex string pool. The generated smali text also contains characters
+         * produced by the writer that never live in the pool, so a query carrying one of
+         * them may span a pool string and a generated token (e.g. {@code renameTo(} joins
+         * the pooled method name with the generated parameter list). Such queries must be
+         * matched against the smali text itself instead of being skipped.
+         */
+        private static final String NON_POOL_CONTEXT_CHARS = "(){}<>-,. \t\r\n\"'|";
+
+        private static boolean containsNonPoolContextChar(String query) {
+            final int n = query.length();
+            for (int i = 0; i < n; i++)
+                if (NON_POOL_CONTEXT_CHARS.indexOf(query.charAt(i)) >= 0) return true;
+            return false;
         }
 
         private boolean checkDexPool(DexBackedDexFile dex, String query, boolean matchCase) {
@@ -2452,8 +2619,8 @@ public class SearchFragment extends Fragment {
             String body = sw.toString();
 
             String dexFileName = "unknown.dex";
-            if (DexEditorActivity.classTree != null) {
-                dexFileName = DexEditorActivity.classTree.findDexFileNameForClass(classDef);
+            if (editorActivity.classTree != null) {
+                dexFileName = editorActivity.classTree.findDexFileNameForClass(classDef);
             }
             StringBuilder sb = new StringBuilder(body.length() + 32);
             sb.append("# ").append(dexFileName).append("\n\n").append(body);
@@ -2461,18 +2628,20 @@ public class SearchFragment extends Fragment {
         }
 
         private String generateSmali(ClassDef classDef) throws Exception {
-            if (DexEditorActivity.classTree != null) {
+            if (editorActivity.classTree != null) {
                 String type = classDef.getType();
                 String typeKey = type.substring(1, type.length() - 1);
-                String pending = DexEditorActivity.classTree.getPendingSmaliMap().get(typeKey);
+                // Declaration searches must use the same source the editor
+                // displays, including unsaved whitespace and added lines.
+                String edited = openEditorsContent.get(typeKey);
+                if (edited != null) return edited;
+                String pending = editorActivity.classTree.getPendingSmaliMap().get(typeKey);
                 if (pending != null) {
-                    if (pending.trim().startsWith("# ")) {
-                        pending = pending.replaceFirst("(?s)^#.*?\\n\\n", "");
-                    }
-                    String dexFileName = DexEditorActivity.classTree.findDexFileNameForClass(classDef);
+                    pending = SmaliHelper.stripSmaliHeader(pending);
+                    String dexFileName = editorActivity.classTree.findDexFileNameForClass(classDef);
                     return "# " + dexFileName + "\n\n" + pending;
                 }
-                return DexEditorActivity.classTree.getSmaliByType(classDef);
+                return editorActivity.classTree.getSmaliByType(classDef);
             }
             return generateSmaliOptimized(classDef);
         }
@@ -2485,61 +2654,12 @@ public class SearchFragment extends Fragment {
             }
         }
 
-        private int countLinesBefore(String text, int index) {
+        private static int countNewlines(String text, int from, int to) {
             int count = 0;
-            for (int i = 0; i < index && i < text.length(); i++)
+            int end = Math.min(to, text.length());
+            for (int i = Math.max(0, from); i < end; i++)
                 if (text.charAt(i) == '\n') count++;
             return count;
-        }
-
-        // get the line of the target text
-        private int findLineOfText(String smali, String searchText) {
-            if (smali == null || searchText == null || smali.isEmpty()) return -1;
-            int pos = matchCase ? smali.indexOf(searchText) : smali.toLowerCase().indexOf(searchText.toLowerCase());
-            if (pos == -1) return -1;
-            return countLinesBefore(smali, pos);
-        }
-
-        private boolean searchInAnnotations(Set<? extends Annotation> annotations, String className, List<TreeNode> snippets, String smali, ClassDef classDef) {
-            if (annotations == null) return false;
-            boolean matched = false;
-            for (Annotation annotation : annotations) {
-                for (AnnotationElement element : annotation.getElements()) {
-                    if (collectAnnotationMatches(element.getName(), element.getValue(), className, snippets, smali, classDef))
-                        matched = true;
-                }
-            }
-            return matched;
-        }
-
-        private boolean collectAnnotationMatches(String name, EncodedValue value, String className, List<TreeNode> snippets, String smali, ClassDef classDef) {
-            boolean matched = false;
-            if (value instanceof StringEncodedValue) {
-                String str = ((StringEncodedValue) value).getValue();
-                if (checkMatch(str)) {
-                    if (foundCount.incrementAndGet() >= 250000) return true;
-                    String currentSmali = smali;
-                    if (currentSmali == null) currentSmali = generateSmaliSafe(classDef);
-                    int lineIdx = findLineOfText(currentSmali, "\"" + str + "\"");
-                    TreeNode snippet = new TreeNode(name + " = \"" + str + "\"", className, 0, false);
-                    snippet.setSnippet(true);
-                    snippet.setLineNumber(lineIdx != -1 ? lineIdx : 0);
-                    preHighlightSnippet(snippet, highlightQuery);
-                    snippets.add(snippet);
-                    matched = true;
-                }
-            } else if (value instanceof AnnotationEncodedValue) {
-                for (AnnotationElement element : ((AnnotationEncodedValue) value).getElements()) {
-                    if (collectAnnotationMatches(element.getName(), element.getValue(), className, snippets, smali, classDef))
-                        matched = true;
-                }
-            } else if (value instanceof ArrayEncodedValue) {
-                for (EncodedValue subValue : ((ArrayEncodedValue) value).getValue()) {
-                    if (collectAnnotationMatches(name, subValue, className, snippets, smali, classDef))
-                        matched = true;
-                }
-            }
-            return matched;
         }
 
         private void preHighlightSnippet(TreeNode node, String query) {
@@ -2621,6 +2741,7 @@ public class SearchFragment extends Fragment {
                 if (fragment.adapter != null) {
                     fragment.adapter.setSearchList(true, highlightQuery);
                     fragment.adapter.refreshVisibleNodes();
+                    fragment.adapter.notifyDataSetChanged();
                 }
             }
         }

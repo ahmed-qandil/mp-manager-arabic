@@ -40,11 +40,13 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Dialog;
 
-import io.github.abdurazaaqmohammed.utils.CopyUtil;
+import io.github.abdurazaaqmohammed.util.io.CopyUtil;
 import io.github.codehasan.colorpicker.extensions.Extensions;
 import modder.hub.dexeditor.views.AlertCircularProgress;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
@@ -57,6 +59,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
 import android.util.DisplayMetrics;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -70,6 +73,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.SearchView;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.DialogFragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -107,7 +111,7 @@ import modder.hub.dexeditor.smali.SmaliHelper;
 import modder.hub.dexeditor.utils.DexUsageHelper;
 import modder.hub.dexeditor.utils.ViewAnimationHelper;
 import modder.hub.dexeditor.views.FastScrollerRecyclerView;
-import io.github.abdurazaaqmohammed.ui.fragment.UnifiedEditorFragment;
+import io.github.abdurazaaqmohammed.ui.editor.UnifiedEditorFragment;
 
 /*
 Author @developer-krushna
@@ -143,6 +147,9 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
     }
 
     private boolean isFirstLoad = true;
+    private final Handler loadHandler = new Handler(Looper.getMainLooper());
+    private int loadGeneration;
+    private Thread loadThread;
 
     // Update the UI with the smali file path, class name, editor line number, and dex version
     public void updateUi(String smaliFilePath, String className, int editorLineNumber, int dexVersion) {
@@ -152,7 +159,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
         this.dexVersion = dexVersion;
         this.isFirstLoad = true; // Always mark as first load to trigger data refresh from file
 
-        if (isAdded()) {
+        if (isAdded() && methodRecyclerView != null && stringsRecyclerView != null) {
             // Refresh data if already showing
             new LoadDataRunnable().run();
         }
@@ -189,7 +196,10 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 
         Menu menu = toolbar.getMenu();
         MenuItem searchItem = menu.findItem(R.id.search);
-        int tint = getTheme() == R.style.Theme_MyApp_Light ? Color.BLACK : Color.WHITE;
+        // Fragment.getTheme() is 0 unless setStyle() was called, so the old
+        // comparison never matched and the icons were always white - invisible
+        // on the light dialog surface.
+        int tint = onSurfaceColor();
         DrawableCompat.setTint(menu.findItem(R.id.strings_list).getIcon(), tint);
         DrawableCompat.setTint(menu.findItem(R.id.close).getIcon(), tint);
         DrawableCompat.setTint(searchItem.getIcon(), tint);
@@ -224,9 +234,8 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 			});
 		}
         if (isFirstLoad) {
-            final Handler handler = new Handler(Looper.getMainLooper());
             final Runnable loadDataRunnable = new LoadDataRunnable();
-            handler.postDelayed(loadDataRunnable, 200L);
+            loadHandler.postDelayed(loadDataRunnable, 200L);
             isFirstLoad = false;
         } else {
             // Restore adapters without reloading
@@ -276,20 +285,32 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
             Objects.requireNonNull(dialog.getWindow()).setLayout(dialogWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         }
+        // Keep the sheet on the same surface as the rest of the editor. The
+        // window is transparent, so the visible colour comes from the layout's
+        // ?attr/colorSurface, which used to resolve to black.
+        View root = getView();
+        if (root != null) {
+            root.setBackgroundTintList(ColorStateList.valueOf(
+                    themeColor(com.google.android.material.R.attr.colorSurface, 0xFFFFFBFE)));
+        }
     }
 
     private void saveCurrentState() {
+        if (!(getActivity() instanceof DexEditorActivity activity)
+                || methodRecyclerView == null || stringsRecyclerView == null) return;
         // Save RecyclerView scroll states
-        if (methodRecyclerView.getLayoutManager() != null) {
-            DexEditorActivity.methodRecyclerViewState = methodRecyclerView.getLayoutManager().onSaveInstanceState();
+        if (methodRecyclerView.getAdapter() != null && methodRecyclerView.getLayoutManager() != null) {
+            activity.methodRecyclerViewState = methodRecyclerView.getLayoutManager().onSaveInstanceState();
         }
-        if (stringsRecyclerView.getLayoutManager() != null) {
-            DexEditorActivity.stringsRecyclerViewState = stringsRecyclerView.getLayoutManager().onSaveInstanceState();
+        if (stringsRecyclerView.getAdapter() != null && stringsRecyclerView.getLayoutManager() != null) {
+            activity.stringsRecyclerViewState = stringsRecyclerView.getLayoutManager().onSaveInstanceState();
         }
-        DexEditorActivity.wasStringsVisible = stringsRecyclerView.getVisibility() == View.VISIBLE;
+        if (methodRecyclerView.getAdapter() != null)
+            activity.wasStringsVisible = stringsRecyclerView.getVisibility() == View.VISIBLE;
     }
 
     public void restorePreviousState(Parcelable methodState, Parcelable stringsState, boolean wasStringsVisible) {
+        if (!isAdded() || toolbar == null || methodRecyclerView == null || stringsRecyclerView == null) return;
         // Restore visibility
         MenuItem item = toolbar.getMenu().findItem(R.id.strings_list);
         if (wasStringsVisible) {
@@ -316,17 +337,27 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
     }
 
     private void restoreRecyclerViewState() {
-        restorePreviousState(DexEditorActivity.methodRecyclerViewState, DexEditorActivity.stringsRecyclerViewState, DexEditorActivity.wasStringsVisible);
+        if (!(getActivity() instanceof DexEditorActivity activity) || !isAdded()) return;
+        restorePreviousState(activity.methodRecyclerViewState, activity.stringsRecyclerViewState, activity.wasStringsVisible);
     }
 
     @Override
     public void onDestroyView() {
-        super.onDestroyView();
         saveCurrentState(); // Save state when dialog is dismissed
+        ++loadGeneration;
+        loadHandler.removeCallbacksAndMessages(null);
+        if (loadThread != null) loadThread.interrupt();
+        loadThread = null;
+        methodRecyclerView = null;
+        stringsRecyclerView = null;
+        toolbar = null;
+        isFirstLoad = true;
+        super.onDestroyView();
     }
 
     @SuppressLint("NotifyDataSetChanged")
     public void performSearch(final String _charSeq) {
+        if (methodRecyclerView == null || !isAdded()) return;
         try {
             methodOrFieldInfo.clear();
             methodOrFieldInfo = new Gson().fromJson(savedMethodData, new TypeToken<ArrayList<HashMap<String, Object>>>() {
@@ -353,6 +384,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 
     @SuppressLint("NotifyDataSetChanged")
     public void performStringsSearch(final String _charSeq) {
+        if (stringsRecyclerView == null || !isAdded()) return;
         try {
             stringListInfo.clear();
             stringListInfo = new Gson().fromJson(savedStringsData, new TypeToken<ArrayList<HashMap<String, Object>>>() {
@@ -385,6 +417,40 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
         return drawable;
     }
 
+    /** Resolves a Material colour attribute of the activity theme. */
+    private int themeColor(int attr, int fallback) {
+        Context ctx = getContext();
+        if (ctx == null) return fallback;
+        try {
+            TypedValue value = new TypedValue();
+            if (ctx.getTheme().resolveAttribute(attr, value, true)) {
+                if (value.resourceId != 0) {
+                    int color = ContextCompat.getColor(ctx, value.resourceId);
+                    if (color != 0) return color;
+                }
+                if (value.data != 0) return value.data;
+            }
+        } catch (Exception ignored) {
+        }
+        return fallback;
+    }
+
+    /** colorOnSurface of the activity theme. */
+    private int onSurfaceColor() {
+        int resolved = themeColor(com.google.android.material.R.attr.colorOnSurface, 0);
+        if (resolved != 0) return resolved;
+        return themeColor(android.R.attr.textColorPrimary, 0xFF1C1B1F);
+    }
+
+    /**
+     * Highlight for the currently selected row. The old saturated cyan was far
+     * too loud against the dialog surface; a material secondary-container tone
+     * reads as "selected" without shouting.
+     */
+    private int selectionHighlightColor() {
+        return themeColor(com.google.android.material.R.attr.colorSecondaryContainer, 0xFFD6E3F0);
+    }
+
     // Update the editor line number in the parent activity or current fragment
     public void updateEditorLineNumber(String lineNumber) {
         if (getActivity() instanceof DexEditorActivity activity) {
@@ -408,8 +474,8 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
             String subtitle = "(" + _getTextAfter(methodName, "(");
 
             // Check if tab already exists to avoid redundant generation
-            for (int i = 0; i < DexEditorActivity.tabs.size(); i++) {
-                DexEditorActivity.EditorTab tab = DexEditorActivity.tabs.get(i);
+            for (int i = 0; i < dexActivity.tabs.size(); i++) {
+                DexEditorActivity.EditorTab tab = dexActivity.tabs.get(i);
                 if (tab.className.equals(cleanedClassName) && tab.title.equals(title) &&
                     tab.subtitle != null && tab.subtitle.equals(subtitle) && tab.type == 2) {
                     dexActivity.showEditor(i);
@@ -448,8 +514,8 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
             String title = SmaliHelper.extractSimpleName(fullClassName) + "." + _getTextBefore(methodName, "(");
 
             // Check if tab already exists to avoid redundant decompilation
-            for (int i = 0; i < DexEditorActivity.tabs.size(); i++) {
-                DexEditorActivity.EditorTab tab = DexEditorActivity.tabs.get(i);
+            for (int i = 0; i < dexActivity.tabs.size(); i++) {
+                DexEditorActivity.EditorTab tab = dexActivity.tabs.get(i);
                 if (tab.className.equals(cleanedClassName) && tab.title.equals(title) && tab.type == 1) {
                     dexActivity.showEditor(i);
                     dismiss();
@@ -518,12 +584,12 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
         String declaring = DexUsageHelper.toType(slashClass);
         int overrideCount = 0;
         try {
-            if (DexEditorActivity.classTree != null) {
+            if (activity.classTree != null) {
                 List<ClassDef> all;
-                synchronized (DexEditorActivity.classTree) {
-                    all = new ArrayList<>(DexEditorActivity.classTree.classMap.values());
+                synchronized (activity.classTree) {
+                    all = new ArrayList<>(activity.classTree.classMap.values());
                 }
-                overrideCount = DexUsageHelper.findOverrides(declaring, parsed[0], parsed[1], all, DexEditorActivity.classTree.classMap).size();
+                overrideCount = DexUsageHelper.findOverrides(declaring, parsed[0], parsed[1], all, activity.classTree.classMap).size();
             }
         } catch (Exception ignored) {
         }
@@ -531,9 +597,9 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
         final String proto = parsed[1];
         final String sClass = slashClass;
         if (overrideCount > 0) {
-            new MaterialAlertDialogBuilder(requireContext())
+            new MaterialAlertDialogBuilder(activity)
                     .setTitle(R.string.find_usages)
-                    .setMessage(getString(R.string.overriding_methods_found, overrideCount))
+                    .setMessage(activity.getString(R.string.overriding_methods_found, overrideCount))
                     .setPositiveButton(android.R.string.ok, (d, w) -> {
                         DexEditorActivity a = (DexEditorActivity) getActivity();
                         dismiss();
@@ -563,7 +629,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 
     private void clearMethod(HashMap<String, Object> item) {
         Activity act = getActivity();
-        if (act == null || DexEditorActivity.classTree == null || item == null) return;
+        if (!(act instanceof DexEditorActivity) || ((DexEditorActivity) act).classTree == null || item == null) return;
         String methodOrFieldName = Objects.requireNonNull(item.get("MethodOrFieldName")).toString();
         String[] parsed = splitMethodTarget(methodOrFieldName);
         if (parsed == null) return;
@@ -573,15 +639,15 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
         DexEditorActivity activity = (DexEditorActivity) act;
         AlertCircularProgress pd = new AlertCircularProgress(activity);
         try {
-            pd.setMessage(getString(R.string.clearing_method));
+            pd.setMessage(act.getString(R.string.clearing_method));
         } catch (Exception ignored) {
         }
         pd.show();
         new Thread(() -> {
             try {
                 ClassDef def;
-                synchronized (DexEditorActivity.classTree) {
-                    def = DexEditorActivity.classTree.classMap.get(slashClass);
+                synchronized (activity.classTree) {
+                    def = activity.classTree.classMap.get(slashClass);
                 }
                 if (def == null) throw new Exception("Class not found");
                 com.android.tools.smali.dexlib2.iface.Method target = DexUsageHelper.findMethod(def, mName, proto);
@@ -614,9 +680,9 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
                     body.add("    return-object v0");
                 }
                 String current;
-                synchronized (DexEditorActivity.classTree) {
-                    String pending = DexEditorActivity.classTree.getPendingSmaliMap().get(slashClass);
-                    current = pending != null ? pending : DexEditorActivity.classTree.getSmaliByType(def);
+                synchronized (activity.classTree) {
+                    String pending = activity.classTree.getPendingSmaliMap().get(slashClass);
+                    current = pending != null ? pending : activity.classTree.getSmaliByType(def);
                 }
                 if (current == null) throw new Exception("Cannot read class");
                 String[] lines = current.split("\n", -1);
@@ -648,12 +714,12 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
                 String newSmali = sb.toString();
                 try {
                     ClassDef newDef = Smali.assemble(newSmali, SharedSmaliUtils.ASSEMBLE_OPTIONS, activity.dexVersion);
-                    DexEditorActivity.classTree.saveClassDef(newDef);
+                    activity.classTree.saveClassDef(newDef);
                 } catch (Throwable e) {
-                    DexEditorActivity.classTree.saveSmali(slashClass, newSmali);
+                    activity.classTree.saveSmali(slashClass, newSmali);
                 }
                 try {
-                    String pure = newSmali.replaceFirst("(?s)^#.*?\\n\\n", "");
+                    String pure = SmaliHelper.stripSmaliHeaderUnchecked(newSmali);
                     FileWriter fw = new FileWriter(smaliFilePath);
                     fw.write(pure);
                     fw.close();
@@ -670,8 +736,8 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
                         dismiss();
                     } catch (Exception ignored) {
                     }
-                    for (int i = 0; i < DexEditorActivity.tabs.size(); i++) {
-                        DexEditorActivity.EditorTab tab = DexEditorActivity.tabs.get(i);
+                    for (int i = 0; i < activity.tabs.size(); i++) {
+                        DexEditorActivity.EditorTab tab = activity.tabs.get(i);
                         if (tab.className.equals(slashClass) && tab.type == 0) {
                             tab.content = doneSmali;
                             tab.isModified = false;
@@ -682,7 +748,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
                             }
                         }
                     }
-                    DexEditorActivity.isChanged = true;
+                    activity.isChanged = true;
                     activity.refreshExplorerPage(1);
                     new LoadDataRunnable().run();
                     Extensions.showMessage(activity, "Method cleared");
@@ -713,20 +779,27 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
     private class LoadDataRunnable implements Runnable {
         @Override
         public void run() {
+            Activity activity = getActivity();
+            if (!isAdded() || activity == null || activity.isFinishing() || activity.isDestroyed()
+                    || methodRecyclerView == null || stringsRecyclerView == null) return;
             saveCurrentState(); // Save current scroll position before reloading data
+            if (loadThread != null) loadThread.interrupt();
             new LoadDataTask().execute();
         }
     }
 
     @SuppressLint("StaticFieldLeak")
     private class LoadDataTask {
-        private final Handler mainHandler = new Handler(Looper.getMainLooper());
+        private final int generation = ++loadGeneration;
+        private final String sourcePath = smaliFilePath;
+        private String parsedClassName = fullClassName;
 
         void execute() {
-            new Thread(() -> {
+            loadThread = new Thread(() -> {
                 final Map<String, List<HashMap<String, Object>>> results = doInBackground();
-                mainHandler.post(() -> onPostExecute(results));
-            }).start();
+                if (!Thread.currentThread().isInterrupted()) loadHandler.post(() -> onPostExecute(results));
+            }, "smali-navigation-load");
+            loadThread.start();
         }
 
         protected Map<String, List<HashMap<String, Object>>> doInBackground() {
@@ -736,7 +809,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
             List<HashMap<String, Object>> classInfoList = new ArrayList<>();
             List<HashMap<String, Object>> stringList = new ArrayList<>();
 
-            try (BufferedReader smaliFileReader = new BufferedReader(new FileReader(smaliFilePath))) {
+            try (BufferedReader smaliFileReader = new BufferedReader(new FileReader(sourcePath))) {
                 // Open the smali file for reading
                 String currentLine;
                 int currentLineNumber = 0;
@@ -744,9 +817,20 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
                 String currentMethodName = "";
                 String currentFullMethodSignature = "";
                 int methodStartLine = -1;
+                // A line read ahead of the loop (by the .class parser) that still
+                // needs normal processing so it keeps the line numbering intact
+                String pendingLine = null;
 
                 // Read the smali file line by line
-                while ((currentLine = smaliFileReader.readLine()) != null) {
+                while (true) {
+                    if (Thread.currentThread().isInterrupted()) return null;
+                    if (pendingLine != null) {
+                        currentLine = pendingLine;
+                        pendingLine = null;
+                    } else {
+                        currentLine = smaliFileReader.readLine();
+                    }
+                    if (currentLine == null) break;
                     currentLineNumber++;
                     String trimmedLine = currentLine.trim();
 
@@ -780,7 +864,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
                         methodStartLine = currentLineNumber - 1;
                     }
                     // Check if the line ends a method
-                    else if (tokens[0].equals(".end") && tokens[1].equals("method")) {
+                    else if (tokens.length > 1 && tokens[0].equals(".end") && tokens[1].equals("method")) {
                         if (isInsideMethod && methodStartLine != -1) {
                             // Create a method info entry
                             HashMap<String, Object> methodInfo = new HashMap<>();
@@ -819,18 +903,26 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
                     // Check if the line defines a class
                     else if (tokens[0].equals(".class") && trimmedLine.endsWith(";")) {
                         String className = tokens[tokens.length - 1]; // Last token is the class name
-                        fullClassName = className;
+                        parsedClassName = className;
                         // Read the next line to check for the superclass
                         String nextLine = smaliFileReader.readLine();
                         if (nextLine != null && nextLine.trim().startsWith(".super")) {
+                            // The .super line was consumed here instead of going through
+                            // the loop, so count it - otherwise every following line
+                            // would be parsed one line too early and navigation/highlight
+                            // would land one line above the real method/field
+                            currentLineNumber++;
                             String superClassName = nextLine.trim().substring(nextLine.indexOf(".super") + 7).trim();
 
                             // Create a class info entry
                             HashMap<String, Object> classInfo = new HashMap<>();
                             classInfo.put("MethodOrFieldName", className);
-                            classInfo.put("StartLineNumber", (currentLineNumber - 1));
+                            classInfo.put("StartLineNumber", (currentLineNumber - 2));
                             classInfo.put("SuperClass", superClassName);
                             classInfoList.add(classInfo);
+                        } else if (nextLine != null) {
+                            // Not a .super line - don't lose it, feed it back into the loop
+                            pendingLine = nextLine;
                         }
                     }
                 }
@@ -852,7 +944,12 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 
         @SuppressLint("NotifyDataSetChanged")
         protected void onPostExecute(Map<String, List<HashMap<String, Object>>> parsedDataMap) {
+            Activity activity = getActivity();
+            if (generation != loadGeneration || !isAdded() || activity == null
+                    || activity.isFinishing() || activity.isDestroyed()
+                    || methodRecyclerView == null || stringsRecyclerView == null) return;
             if (parsedDataMap != null && !parsedDataMap.isEmpty()) {
+                fullClassName = parsedClassName;
                 methodOrFieldInfo.clear();
                 stringListInfo.clear();
 
@@ -968,7 +1065,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 
                 if(dynamicBackground != null) {
                     if (editorLineNumber == ((int) Math.floor(Double.parseDouble(startLineNumber)))) {
-                        dynamicBackground.setColor(Color.parseColor("#67C1DF"));
+                        dynamicBackground.setColor(selectionHighlightColor());
                     } else {
                         dynamicBackground.setColor(Color.TRANSPARENT);
                     }
@@ -982,7 +1079,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 
                 if(dynamicBackground != null) {
                     if (editorLineNumber == ((int) Math.floor(Double.parseDouble(startLineNumber)))) {
-                        dynamicBackground.setColor(Color.parseColor("#67C1DF"));
+                        dynamicBackground.setColor(selectionHighlightColor());
                     } else {
                         dynamicBackground.setColor(Color.TRANSPARENT);
                     }
@@ -1001,7 +1098,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 
                 if(dynamicBackground != null) {
                     if (editorLineNumber >= startLine && editorLineNumber <= endLine) {
-                    dynamicBackground.setColor(Color.parseColor("#67C1DF"));
+                    dynamicBackground.setColor(selectionHighlightColor());
                 } else {
                     dynamicBackground.setColor(Color.TRANSPARENT);
                 }
@@ -1200,7 +1297,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
         public void run() {
             activity.runOnUiThread(() -> {
                 pd = new AlertCircularProgress(activity);
-                pd.setMessage(getString(R.string.generating_flowchart));
+                pd.setMessage(activity.getString(R.string.generating_flowchart));
                 pd.show();
             });
 
@@ -1212,6 +1309,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
 
                 activity.runOnUiThread(() -> {
                     if (pd != null) pd.dismiss();
+                    if (activity.isFinishing() || activity.isDestroyed()) return;
 
                     for (Method method : drawFlowDiagram.getClassInSmali().getMethodDict().values()) {
                         final String dotDiagram = drawFlowDiagram.drawMethodFlowDiagram(method);
@@ -1227,6 +1325,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
             } catch (final Exception e) {
                 activity.runOnUiThread(() -> {
                     if (pd != null) pd.dismiss();
+                    if (activity.isFinishing() || activity.isDestroyed()) return;
                     showExceptionDlg(activity, e);
                 });
             }
@@ -1249,7 +1348,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
         public void run() {
             activity.runOnUiThread(() -> {
                 pd = new AlertCircularProgress(activity);
-                pd.setMessage(getString(R.string.decompiling));
+                pd.setMessage(activity.getString(R.string.decompiling));
                 pd.show();
             });
 
@@ -1322,7 +1421,7 @@ public class SmaliMethodFieldListFragment extends DialogFragment {
             }
             if(dynamicBackground != null) {
                 if (editorLineNumber == ((int) Math.floor(Double.parseDouble(startLineNumber)))) {
-                    dynamicBackground.setColor(Color.parseColor("#67C1DF"));
+                    dynamicBackground.setColor(selectionHighlightColor());
                 } else {
                     dynamicBackground.setColor(Color.TRANSPARENT);
                 }

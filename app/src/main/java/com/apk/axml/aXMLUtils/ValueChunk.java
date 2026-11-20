@@ -17,6 +17,7 @@ public class ValueChunk extends Chunk<Chunk.EmptyHeader> {
     final byte res0 = 0;
     byte type = -1;
     int data = -1;
+    private static final String ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android";
 
     static class ValPair {
         final int pos;
@@ -37,16 +38,19 @@ public class ValueChunk extends Chunk<Chunk.EmptyHeader> {
     }
 
     final Pattern explicitType = Pattern.compile("^!(?:(string|str|null|)!)?(.*)");
+    // Resource names may contain '$' (AGP intermediate resources) and '.' (style
+    // names like Theme.App); restricting to \w degrades such references into
+    // raw strings on re-encode, bloating the string pool and breaking them.
     final Pattern types = Pattern.compile(("^(?:" +
             "(@null)" +
-            "|(@\\+?(?:\\w+:)?\\w+/\\w+|@(?:\\w+:)?[0-9a-zA-Z]+)" +
-            "|(\\?\\+?(?:\\w+:)?\\w+/\\w+|\\?(?:\\w+:)?[0-9a-zA-Z]+)" +
+            "|(@\\+?(?:[\\w.]+:)?\\w+/[\\w.$]+|@(?:[\\w.]+:)?[0-9a-zA-Z]+)" +
+            "|(\\?\\+?(?:[\\w.]+:)?\\w+/[\\w.$]+|\\?(?:[\\w.]+:)?[0-9a-zA-Z]+)" +
             "|(true|false)" +
             "|([-+]?\\d+)" +
             "|(0x[0-9a-zA-Z]+)" +
             "|([-+]?\\d+(?:\\.\\d+)?)" +
             "|([-+]?\\d+(?:\\.\\d+)?(?:dp|dip|in|px|sp|pt|mm))" +
-            "|([-+]?\\d+(?:\\.\\d+)?(?:%))" +
+            "|([-+]?\\d+(?:\\.\\d+)?(?:%p?))" +
             "|(\\#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))" +
             "|(match_parent|wrap_content|fill_parent)" +
             ")$").replaceAll("\\s+", ""));
@@ -79,7 +83,10 @@ public class ValueChunk extends Chunk<Chunk.EmptyHeader> {
         int base;
         String num;
 
-        if (val.endsWith("%")) {
+        if (val.endsWith("%p")) {
+            num = getNumber(val,2);
+            unit = 1;
+        } else if (val.endsWith("%")) {
             num = getNumber(val,1);
             unit = 0;
         } else if (val.endsWith("dp")) {
@@ -107,14 +114,19 @@ public class ValueChunk extends Chunk<Chunk.EmptyHeader> {
             throw new RuntimeException("invalid unit");
         }
         double f = Double.parseDouble(num);
-        if (f < 1 && f > -1) {
-            base = (int) (f * (1 << 23));
+        if (f == Math.floor(f) && f >= -0x800000 && f <= 0x7FFFFF) {
+            base = (int) f;
+            radix = 0;
+        } else if (f < 1 && f > -1) {
+            // Round the mantissa like aapt2 does; truncating drifted values
+            // across decode/encode cycles (373.5078dp -> 373.5dp).
+            base = (int) Math.round(f * (1 << 23));
             radix = 3;
         } else if (f < 0x100 && f > -0x100) {
-            base = (int) (f * (1 << 15));
+            base = (int) Math.round(f * (1 << 15));
             radix = 2;
         } else if (f < 0x10000 && f > -0x10000) {
-            base = (int) (f * (1 << 7));
+            base = (int) Math.round(f * (1 << 7));
             radix = 1;
         } else {
             base = (int) f;
@@ -125,6 +137,15 @@ public class ValueChunk extends Chunk<Chunk.EmptyHeader> {
 
     private static String getNumber(String val, int number) {
         return val.substring(0, val.length() - number);
+    }
+
+    /** Numeric value for a known framework attribute, or null when unknown. */
+    private Integer symbolicValue() {
+        String attrName = attrChunk == null ? null : attrChunk.name;
+        if (attrName == null || attrChunk.rawValue == null) return null;
+        String namespace = attrChunk.namespace;
+        if (namespace != null && !namespace.isEmpty() && !ANDROID_NAMESPACE.equals(namespace)) return null;
+        return AttrValueResolver.parse(attrName, attrChunk.rawValue);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
@@ -141,6 +162,15 @@ public class ValueChunk extends Chunk<Chunk.EmptyHeader> {
                 throw new RuntimeException();
             }
         } else {
+            // Framework attributes with a symbolic value set (layout_gravity,
+            // layout_width, screenOrientation, ...) must not degrade into a raw
+            // string: the platform reads them as integers.
+            Integer symbolic = symbolicValue();
+            if (symbolic != null) {
+                type = 0x10;
+                data = symbolic;
+                return;
+            }
             m = types.matcher(attrChunk.rawValue);
             if (m.find()) {
                 ValPair vp = new ValPair(m);
@@ -188,8 +218,17 @@ public class ValueChunk extends Chunk<Chunk.EmptyHeader> {
                         data = evalcomplex(vp.val);
                         break;
                     case 10:
-                        type = 0x1c;
                         data = Color.parseColor(vp.val);
+                        // Match the original color type by string length, as
+                        // the decoder prints each type differently: #AARRGGBB,
+                        // #RRGGBB, #ARGB, #RGB. Always writing ARGB8 would
+                        // churn values across decode/encode cycles.
+                        type = switch (vp.val.length()) {
+                            case 4 -> 0x1f; // RGB4
+                            case 5 -> 0x1e; // ARGB4
+                            case 7 -> 0x1d; // RGB8
+                            default -> 0x1c; // ARGB8
+                        };
                         break;
                     case 11:
                         type = 0x10;

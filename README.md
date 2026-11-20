@@ -12,423 +12,46 @@ A free dual pane, Material Design file manager for Android with focus on APKs an
 
 [![Donate](https://img.shields.io/badge/Donate-0079C1?style=for-the-badge&logo=paypal)](https://paypal.me/AbdurazaaqMohammed)
 
+MP Manager can browse and manage local, root and network storage in two panes and supports a variety of APK functions; signing, decompiling, DEX, resource editing, patching and dumping. Full documentation with screenshots is available on the [website](https://abdurazaaqmohammed.github.io/mpmanager.html).
+
 ## Features
 
-### File Manager
+| Area | Highlights | Docs |
+|---|---|---|
+| File Manager | Dual pane navigation, advanced search (including inside archives), archives browsed as folders (ZIP, RAR, zst, backups), recycle bin, checksums, root / Shizuku / Dhizuku access | [File Manager](https://abdurazaaqmohammed.github.io/mpmanager/file-manager.html) |
+| Network | FTP server and client with FTPS, WebDAV and SMB clients, server discovery, encrypted saved profiles | [Network](https://abdurazaaqmohammed.github.io/mpmanager/network.html) |
+| Media | Audio and video player with background mini player, image editor, EXIF editing, Free Style collage studio | [Media](https://abdurazaaqmohammed.github.io/mpmanager/media.html) |
+| APK Tools | Install and sign APKs, decompile and build, dex and ARSC editors, manifest quick edit, LSPatch integrated mode, IL2CPP dumper, Jiagu unpacker, native library patcher | [APK Tools](https://abdurazaaqmohammed.github.io/mpmanager/apk-tools.html) |
+| Editors | Text editor with syntax highlighting and AXML decoding, hex editor, compare text, archives, resources and dex files | [Editors](https://abdurazaaqmohammed.github.io/mpmanager/editors.html) |
+| Tools | Command Shell, Smart App Ops, SetEdit, SQLite viewer and editor, partition dumper, boot image tools, ELF inspector, Logcat reader, OCR, plugins and tool packs | [Tools](https://abdurazaaqmohammed.github.io/mpmanager/tools.html) |
+| AI and MCP | Built-in MCP server: let AI tools drive the app's file, ZIP and APK engines with a strict access policy | [AI and MCP](https://abdurazaaqmohammed.github.io/mpmanager/ai-mcp.html) |
 
-<details><summary>Dual pane navigation</summary>
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/13e3b904-43d1-4f46-8d66-7ba8d80c0ad5" />
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/f710883c-68c5-4bb4-ab6f-6966d93668e6" />
-</p>
+## Download
 
-Browse two folders side by side. This makes it easy to move or copy files from one pane to the other.
+Grab the latest APK from [Releases](https://github.com/AbdurazaaqMohammed/MP-Manager/releases). Minimum Android version is 6.0.
 
-A separate home folder can be set for each pane. The active pane can be highlighted with a colored border, optionally animated.
+## Contributing
 
-There are back and forward buttons, button to sync both panes to the same folder, new file/folder button, parent folder button. You can pull down to refresh the current folder.
+Pull requests are welcome. If you want to build on top of MP Manager, see the [third-party plugin API](docs/THIRD_PARTY_PLUGINS.md) and [ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the codebase is organized.
 
-<!-- TODO: Add video
-![Dual pane navigation](./images/navigation.mp4)
--->
-</details>
+## Translations
 
-<details><summary>Bookmarks and history</summary>
+The app is translated to Russian, Simplified Chinese, Spanish, Indonesian, Arabic, Persian, Thai, Turkish and Vietnamese. New translations are welcome via pull request.
 
-Add any folder to bookmarks and manage them from a bottom drawer. The drawer has tabs for bookmarks and navigation history and opens by swiping up on the bottom bar.
+## Why is AI used to develop MP Manager?
 
-Bookmarks can be organized into groups, edited, and deleted by long pressing on one. You can choose which tab new bookmarks go to, and optionally show bookmarks and bookmark groups in the sidebar.
+I had the idea for MP Manager almost 10 years ago and I planned and developed it for years with little progress. I did not even post it on GitHub for a long time because the app barely worked at all. With AI, I was able to advance the app massively in a short time.
 
-<p align="center">
-  <img src="./images/bookmarks.png" width="200" alt="Bookmarks and history drawer">
-  <br>
-  <em>Bookmarks and history drawer</em>
-</p>
-</details>
+While some people use arguments like "AI only helps unskilled people" as insults, I believe MP Manager is an example of how AI can be used by regular people to create working alternatives to paid/closed source software. Big corporations love AI because they can save huge money from it, but they **want you and me** to hate AI because it allows regular people to not only save money, but create our own alternatives catered to our needs.
 
-<details><summary>Filtering, sorting and hidden files</summary>
+So far I didn't spend any money on AI in development of MP Manager. You can use AI to directly contribute to the development of MP Manager yourself.
+Some free AI services have referral program that can give me more free usage, you can help me by sign up for these programs with my referral code/link:
+  * [WorkBuddy](https://workbuddy.ai/invite?code=KGGFX6GZ) gives free monthly credits and limited free promotions with models like DeepSeek 4.1 Flash, GLM5.3 Flash, MiniMax M3.1 Flash and more available.
+    * You have to download the program and send at least one message (no charge) for me to get credits.
+  * [ZCode](https://zcode.z.ai/invite/CW3JK87H) offers GLM 5.3/Flash with regular free promotions like 500 million free tokens on weekends.
+    * You have to download the program and complete onboarding (no charge) for me to get credits.
+* If the app gets more pull requests it may become eligible for the free [Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program
 
-Filter the current folder as you type. Sort by name, size, date or type, reverse order, and choose whether a sort applies only to the current folder or everywhere. You can hide files from the list, show or hide system hidden files such as dot folders, and edit the list of manually hidden files later.
+## License
 
-<p align="center">
-  <img src="./images/filter.png" width="200" alt="Filter the current folder"> <img src="./images/sort.png" width="200" alt="Sort dialog"> <img src="./images/hidefiles.png" width="200" alt="File hiding">
-  <br>
-  <em>Filter the current folder</em> &nbsp;·&nbsp; <em>Choose a sorting mode</em> &nbsp;·&nbsp; <em>Hide files from the list</em>
-</p>
-</details>
-
-<details><summary>Advanced search</summary>
-
-Search the current folder by file name and optionally recurse into subfolders. Advanced options include match case, regular expressions, searching for text inside file contents, and minimum or maximum file size. Recent searches are saved for quick reuse.
-
-Content search can also be run over an entire folder from the menu, reporting the number of matches in each file. A list of paths can be set to be excluded from searching.
-
-<p align="center">
-  <img src="./images/search.png" width="200" alt="Search dialog">
-  <br>
-  <em>The advanced search dialog</em>
-</p>
-</details>
-
-<details><summary>File operations</summary>
-
-Create files and folders, rename, copy, move and delete with progress reporting.
-
-Extract, add files in ZIP, APK. Compression option when modifying ZIPS + auto sign and zipalign for APKs.
-
-Rename several files at once using templates with prefix, suffix, numbering and find/replace.
-
-When a destination file already exists, each conflict can be resolved with replace, skip or rename, applied to all remaining files, or added to an existing archive. Copies can keep the original modification date. Renaming several files previews the new names before they are applied, and in multi select mode swiping across two files selects every file between them.
-
-The MIME type detected from the file contents is shown before sharing or opening a file, and a default app can be set or cleared for a file type.
-
-Files received from other apps can be saved from the share menu. Unknown files can be opened with a custom app from the Open with dialog.
-<p align="center">
-  <img width="200" alt="shared" src="https://github.com/user-attachments/assets/abdc4653-5af8-4030-8a53-bdcb70357de6" />
-  <br>
-  <em>File shared with app</em>
-</p>
-
-Shell scripts can be viewed, edited or executed with the output and exit code shown, optionally with root.
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/0b2b1c20-dab3-49a7-b6ea-57ea3035368b" />
-  <br>
-  <em>Shell script output</em>
-</p>
-
-<!-- TODO: Add screenshots/videos
-![Multi rename dialog](./images/multi-rename.jpg)
-![Compress dialog](./images/compress.jpg)
--->
-</details>
-
-<details><summary>File properties and sharing</summary>
-
-View type, size and last modified date, and copy any value to the clipboard with a long press. Share files or open them with another app.
-
-With root, file permissions can be edited, including owner, group, the read, write and execute bits for each, and the setuid, setgid and sticky flags.
-
-Checksums can be computed for any file, pasted hashes can be verified, and hashes of two files can be compared. ZIP entries have CRC32 and checksum support.
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/d8094e02-0c77-4c4e-ae82-d32468af1674" />
-  <br>
-  <em>Properties</em>
-</p>
-</details>
-
-<details><summary>Root and Shizuku file management</summary>
-
-Browse and manage files with root or Shizuku, including Android/data, obb and media on Android 11+. With Shizuku you can also open other locations the shell can read but the app cannot, such as /storage/emulated and system folders, read-only where modification is not permitted. Root listing is cached for speed, commands are safe on paths with spaces, and editors write back through root when needed.
-
-In root or Shizuku mode the root directory is added to the sidebar.
-
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/87aa9d8d-d2ae-4430-a407-7bf69771e0a7" />
-  <br>
-  <em>Viewing /Android/data and /data/data with root</em>
-</p>
-</details>
-
-<details><summary>Customizable file menu</summary>
-
-Reorder the long press file menu by dragging items anywhere. The menu can be shown as a bottom sheet or in two columns, with Material colors.
-
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/ffbd2e8a-5f29-4229-a6ec-d73a5511ffe6" />
-  <br>
-  <em>File menu order</em>
-</p>
-</details>
-
-### Media
-
-<details><summary>Built-in audio and video player</summary>
-
-Play audio and video files without leaving the app. A mini player dialog with artwork, seek bar and playback controls can play in the background or expand into a full player.
-
-Player settings allow the screen to be kept on while playing and the skip duration to be changed.
-
-<!-- TODO: Add screenshots/videos
-![Mini player](./images/mini-player.jpg)
-![Full player](./images/full-player.mp4)
--->
-</details>
-
-<details><summary>Image viewer</summary>
-
-Open images with swipe between pictures in directory. EXIF metadata is shown for supported files, images can be deleted or shared from the viewer.
-
-The built-in image editor can crop single or multiple images with standard or lossless JPEG quality, and view or edit EXIF tags in single or batch mode. The editor also rotates and flips images, crops to a custom aspect ratio, and strips EXIF and other metadata from JPEG files.
-
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/a73ca257-e65a-4c7a-89ca-d66325763193" />
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/30691f69-0bf1-435d-85dd-fba32d2b4198" />
-  <br>
-  <em>Image viewer and editor</em>
-</p>
-</details>
-
-### APK Tools
-
-<details><summary>APK information and install</summary>
-
-Tap an APK to see its icon, name, version code and name, package name, signature schemes used (V1, V2, V3, V4) and whether it is protected. You can view files inside the APK and more features outlined below.
-
-Installing both regular and split APKS is supported.
-
-For installed packages APK and data directory are also shown with root.
-
-<p align="center">
-  <img src="./images/apkdialog.png" width="200" alt="APK info dialog">
-  <br>
-  <em>The APK info dialog</em>
-</p>
-</details>
-
-<details><summary>Sign APK and split APKs</summary>
-
-Sign APKs and split APKs with your own or default (Debug) key. Signing supports JKS and PKCS12 keystores as well as PK8/PEM keys, and new keys can be generated inside the app.
-
-Automatic signing after modifying an APK can be toggled and configured. For safety with keys that have passwords, it is required to authenticate each time before signing but biometrics can be used as alternative to entering password every time.
-
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/15e71c8c-af20-4fb9-a650-92be8dffd7e3" />
-  <br>
-  <em>Signature settings</em>
-</p>
-</details>
-
-<details><summary>Toast/Dialog Maker</summary>
-
-Add a Toast or dialog message to activities in an APK, or remove all Toast calls from an APK at once by patching smali code.
-
-<!-- TODO: Add video -->
-</details>
-
-<details><summary>Decompile, build and protect</summary>
-
-All functions from [REAndroid APKEditor](https://github.com/REAndroid/APKEditor) are available: Decompile an APK, Build an APK from a decompiled folder, merge (AntiSplit), Refactor obfuscated resource names and Protect.
-
-When merging split APKs the splits to include can be chosen, device specific splits can be kept or dropped, a compression level can be set, and the merged APK can be signed automatically. Other tools options can also be configured before starting.
-
-<p align="center">
-  <img src="./images/decomp.png" width="200" alt="Decompiling">
-  <br>
-  <em>Decompiling</em>
-</p>
-</details>
-
-<details><summary>Quick edit APK attributes</summary>
-
-Change the launcher icon, app name, install location, version code and name, min SDK and target SDK quickly in a dialog. Every activity and property in the manifest can also be edited from a tree view, including disabling entries. A .bak backup is created upon edit and can be restored.
-
-<p align="center">
-  <img src="./images/quick-edit.png" width="200" alt="Quick edit attributes dialog">
-  <br>
-  <em>Fast edit attributes</em>
-</p>
-</details>
-
-<details><summary>APK optimization and cloning</summary>
-
-Optimize APKs by removing chosen files, with a default list of common tracker and metadata files that can be edited. You can [clone an APK](https://github.com/developer-krushna/ApkCloner) with a new package name.
-
-<p align="center">
-  <img src="./images/clone.png" width="200" alt="Clone APK dialog">
-  <br>
-  <em>The clone APK dialog</em>
-</p>
-</details>
-
-<details><summary>Dex editing</summary>
-
-Edit dex files with [DEX Editor Pro](https://github.com/developer-krushna/Dex-Editor-Android) by developer-krushna. When editing a dex file inside an APK you can choose which dex files to load. Saving asks whether to add the modified file back into the APK and sign it, and a .bak backup is created upon modifying an APK.
-
-Search is improved with find usages, find overriding methods and Clear method actions.
-
-<p align="center">
-  <img src="./images/multidex.png" width="200" alt="Dex selection"> <img src="./images/dexe.png" width="200" alt="Dex Editor">
-  <br>
-  <em>Choose which dex files to load</em> &nbsp;·&nbsp; <em>The integrated dex editor</em>
-</p>
-</details>
-
-<details><summary>ARSC editing</summary>
-
-Edit resources.arsc with the built-in ARSC Editor or ARSC Editor Plus. Search by resource value or ID, copy IDs, jump to an ID, browse the string pool and TEXT tab, with automatic backups on save.
-
-ARSC Editor Plus also provides a translation mode for editing values side by side, adding and deleting entries, and batch import and export of entries and whole string pools from files or another archive. A floating resource querier looks up a resource by name or ID, checks a color written as #RGB, #ARGB, #RRGGBB or #AARRGGBB, and converts numbers between binary, octal, decimal and hex.
-
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/fcd7bf38-03d4-4fe9-abdb-3503180037ae" /> <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/2ce11f22-b8e9-45b7-9185-0d5cbc821fb9" />
-  <br>
-  <em>ARSC Editor</em> &nbsp;·&nbsp; <em>ARSC Editor Plus</em>
-</p>
-</details>
-
-### Editing and Comparing
-
-<details><summary>Text editor</summary>
-
-A full text editor based on [Sora Editor](https://github.com/Rosemoe/sora-editor) with a customizable bottom bar, regex find and replace, and many editor features. Multiple files can be open at once in tabs.
-
-Syntax highlighting, jump to line, line actions such as duplicate, delete and case conversion, comment toggling, word wrap, a read only mode and a method and field list are available, and click, long press and extra button actions can be configured.
-
-Binary Android XML (AXML) files can be decoded for editing and re-encoded on save automatically. A plain XML file that looks like a compiled manifest or resource file is detected as such and can be saved back as binary AXML.
-
-<p align="center">
-  <img src="./images/axml.png" width="200" alt="AXML decoded in the editor">
-  <br>
-  <em>Editing a decoded AXML file</em>
-</p>
-</details>
-
-<details><summary>Hex editor</summary>
-
-View and edit any file in hex with goto offset, search, and selectable encodings. Changes can be saved back directly.
-
-Data can be pasted from hex, decimal, binary, ASCII or base64 text, values can be searched and replaced as string, integer or other data types in either endianness, and unsaved changes can be reverted.
-
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/62f82e7d-121f-4172-aaa7-bec697e70f39" />
-  <br>
-  <em>Hex editor</em>
-</p>
-</details>
-
-<details><summary>Compare tools</summary>
-
-Compare two text files, two ZIP/APK files, two resources.arsc files, or two dex files. Select one item in each pane and the matching compare option appears in the file menu.
-
-Dex comparison summarizes added, removed and changed classes, can ignore debug information, compilation optimizations, register counts and nop instructions, hides classes by category, and shows differences side by side or unified with navigation between them.
-
-<p align="center">
-  <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/906e835a-6102-430f-aec0-9e2240350f64" /> <img width="200" alt="Screenshot" src="https://github.com/user-attachments/assets/4ed78047-3be1-40c1-8c78-91130860c78d" />
-  <br>
-  <em>Comparing DEX</em> &nbsp;·&nbsp; <em>Diff view of file</em>
-</p>
-</details>
-
-### APK Extractor
-
-<details><summary>Extract and share APK parts</summary>
-
-Extract APKs in batch and pull out specific parts: the app icon, resources.arsc, classes.dex, AndroidManifest.xml, base.apk, splits and native libs, as well as the launch activity. Split APKs can be merged into a single APK before extracting, and anything can be shared directly. Pull down to refresh the app list, with extra features when root is available.
-
-Installed apps can also be launched through an activity picker, force stopped, disabled or enabled, have their data cleared or be uninstalled with root.
-
-<p align="center">
-  <img width="200" alt="Screenshot" src="./images/extract1.png" /> <img width="200" alt="Screenshot" src="./images/extract2.png" />
-  <br>
-  <em>App info</em> &nbsp;·&nbsp; <em>Extration options</em>
-</p>
-</details>
-
-### FTP
-
-<details><summary>FTP server</summary>
-
-Use FTP server with custom port, username and password, with optional FTPS explicit or implicit TLS. The server keeps a notification while running so it can be stopped easily. Connection settings can be saved as profiles, and the device IP can be copied or shared.
-
-<p align="center">
-  <img src="./images/ftps.png" width="200" alt="FTP server dialog">
-  <br>
-  <em>The FTP server dialog</em>
-</p>
-</details>
-
-<details><summary>FTP client</summary>
-
-Connect to an FTP server with optional FTPS and browse remote folders in either pane, with the same navigation controls as local files. Files can be uploaded from the device, and connection details can be saved as profiles (to connect to multiple devices easily).
-
-<p align="center">
-  <img src="./images/ftpc.png" width="200" alt="FTP client dialog">
-  <br>
-  <em>The FTP client dialog</em>
-</p>
-</details>
-
-### Utilities
-
-<details><summary>Plugins and tool packs</summary>
-
-Plugins are installed as regular Android apps and listed in the Plugins hub, together with tool packs that can be downloaded inside the app. A plugin can add entries to the sidebar, settings, file menu, text editor or the APK dialog, and each plugin runs in its own process with its own permissions, so it cannot read files unless storage access is granted to it. On first use the certificate fingerprint is confirmed against the one published by the developer, and a warning is shown if it ever changes. Plugins can be trusted, disabled, updated, removed from the hub, or given a launcher shortcut.
-
-Tool packs ship collections of tools grouped into Media, Device, Network, Math, Text and Code, Notes and Random packs, covering among others a tone generator, metronome, recorder with screen recording, text to speech, device information, sensors, compass, bubble level, wallpaper maker, QR generator, a calculator suite with converters, text and code tools, and random generators. The pack catalog can be refreshed, packs can be updated or removed, and the server hosting packs can be changed.
-
-<!-- TODO: Add screenshots/videos -->
-</details>
-
-<details><summary>Screen color picker</summary>
-
-[Use a floating overlay to find out colors anywhere on the screen.](https://github.com/codehasan/ScreenColorPicker)
-
-<p align="center">
-  <img src="./images/colorpicker.png" width="200" alt="Screen color picker dialog"> <img src="./images/colorpicking.png" width="200" alt="Screen color picker active">
-  <br>
-  <em>Configuration dialog</em>&nbsp;·&nbsp;
-  <em>Picking color</em>
-</p>
-</details>
-
-<details><summary>Layout inspector</summary>
-
-[Inspect the view hierarchy of any app through a floating overlay window.](https://github.com/AbdurazaaqMohammed/Layout-Inspector)
-
-<p align="center">
-  <img src="./images/li.png" width="200" alt="Layout Inspector">
-  <br>
-  <em>Layout Inspection</em>
-</p>
-</details>
-
-<details><summary>Command Helper</summary>
-
-Command Helper is a simple but powerful tool. It allows you to create templates for commands that can then be quickly applied to any file you select.
-
-It can generate commands for several files at once, preview them, and copy or run them directly in Termux, one by one or all at once. A placeholder help documents the variables that can be used in a template.
-
-* In this way you can quickly run command line tools like dex2c etc. on files via MP Manager
-
-<p align="center">
-  <img src="./images/cmdhp.png" width="200" alt="Profile creation"> <img src="./images/cmdh.png" width="200" alt="Generated command">
-  <br>
-  <em>Creating a command profile</em> &nbsp;·&nbsp; <em>The generated command</em>
-</p>
-</details>
-
-<details><summary>Wi-Fi Manager</summary>
-
-Shows the current connection with link speed, gateway, IP and MAC details, together with data usage for the device and the app. Saved Wi-Fi passwords can be read with root, searched, exported or shared, including as a QR code. Private DNS can be switched between saved profiles with one tap using root or WRITE_SECURE_SETTINGS, and a quick settings tile cycles the profiles.
-
-<!-- TODO: Add screenshots/videos -->
-</details>
-
-<details><summary>Storage Manager</summary>
-
-Shows mounted volumes with used and free space, the space used by files grouped by type, and the largest files on the device, which can be filtered by type and deleted. App caches can be listed and cleared with root or accessibility service.
-
-<!-- TODO: Add screenshots/videos -->
-</details>
-
-<details><summary>Appearance and storage info</summary>
-
-Choose between system, light, dark and black theme all with Material theme and Dynamic Colors. A custom font can be picked for the app and a separate one for dialogs. The file list size, the number of lines shown for file names and the date and time format can be changed, a different startup folder can be set for each pane, and a .bak backup can be created before editing a file.
-
-The sidebar shows mounted storages with used and free space available, with app icon, refreshable volumes and organizable entries.
-
-The app language can be picked manually (Russian, Simplified Chinese and Spanish translation currently available) and the app can toggle automatic check for updates.
-
-<p align="center">
-  <img src="./images/sidebar.png" width="200" alt="Sidebar with storage info">
-  <br>
-  <em>The sidebar with storage usage</em>
-</p>
-</details>
-
-# Todo
-
-This app still has lots of work to do and probably many bugs to fix but you can try it
-
-* Add patcher to support multiple patch formats like APK Editor and Lucky Patcher
-* Add improvements to APK optimization
+MP Manager is licensed under the [GNU GPL v3](LICENSE).

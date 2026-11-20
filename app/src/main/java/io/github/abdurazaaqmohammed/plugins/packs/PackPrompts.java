@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -20,6 +22,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.io.File;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import java.lang.ref.WeakReference;
 
 /**
  * "This tool is a downloadable pack" prompt used when a tool id is known
@@ -27,6 +32,12 @@ import java.util.List;
  * verification and install, then runs onInstalled (e.g. recreate the host).
  */
 public final class PackPrompts {
+
+    private static final Set<String> DOWNLOADING = new HashSet<>();
+
+    public static synchronized boolean isDownloading(String packId) {
+        return DOWNLOADING.contains(packId);
+    }
 
     private PackPrompts() {
     }
@@ -40,7 +51,7 @@ public final class PackPrompts {
         PackDescriptor pack = PackCatalog.packForTool(catalog, toolId);
         if (pack == null) {
             TextView t = new TextView(activity);
-            t.setText(io.github.abdurazaaqmohammed.MPManager.R.string.hc_unknown_tool);
+            t.setText("Unknown tool");
             box.addView(t);
             return false;
         }
@@ -64,18 +75,18 @@ public final class PackPrompts {
         root.addView(title);
 
         TextView desc = new TextView(activity);
-        desc.setText(activity.getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_pack_part_of, pack.title, pack.versionName)
-                + (pack.hasChecksum() ? activity.getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_checksum_verified)
+        desc.setText("Part of the downloadable \"" + pack.title + "\" pack (v" + pack.versionName + ")."
+                + (pack.hasChecksum() ? " Checksum verified on install."
                 : PackSignatures.isDebuggable(activity)
-                        ? activity.getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_no_checksum_debug)
-                        : activity.getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_no_checksum_release)));
+                        ? " No checksum published for this build \u2014 local builds only, install only if you trust the source."
+                        : " No checksum published for this build \u2014 release builds refuse to install it."));
         desc.setPadding(0, pad / 2, 0, pad / 2);
         root.addView(desc);
 
         Button action = new Button(activity);
         boolean installable = pack.hasChecksum() || PackSignatures.isDebuggable(activity);
         action.setText(PackManager.isInstalled(activity, pack.id) ? "Update pack" : "Download pack");
-        action.setEnabled(installable);
+        action.setEnabled(installable && pack.supportsDevice() && !isDownloading(pack.id));
         root.addView(action);
         action.setOnClickListener(v -> {
             action.setEnabled(false);
@@ -83,9 +94,9 @@ public final class PackPrompts {
             if (!pack.hasChecksum()) {
                 new MaterialAlertDialogBuilder(activity)
                         .setTitle(pack.title)
-                        .setMessage(io.github.abdurazaaqmohammed.MPManager.R.string.hc_pack_no_checksum_warn)
+                        .setMessage("No checksum is published for this pack build. Release builds refuse to install it, so only proceed on a debug build. Continue?")
                         .setNegativeButton(R.string.cancel, (d, w) -> action.setEnabled(true))
-                        .setPositiveButton(io.github.abdurazaaqmohammed.MPManager.R.string.download, (d, w) -> doDownload.run())
+                        .setPositiveButton("Download", (d, w) -> doDownload.run())
                         .show();
             } else {
                 doDownload.run();
@@ -99,14 +110,39 @@ public final class PackPrompts {
         startDownload(activity, pack, onInstalled, null);
     }
 
+    public static void downloadPack(Activity activity, PackDescriptor pack, Runnable onInstalled, View action) {
+        startDownload(activity, pack, onInstalled, action);
+    }
+
     private static void startDownload(Activity activity, PackDescriptor pack, Runnable onInstalled, View action) {
-        long downloadId = PackManager.enqueueDownload(activity, pack);
-        if (downloadId < 0) {
-            Toast.makeText(activity, io.github.abdurazaaqmohammed.MPManager.R.string.hc_download_url_missing, Toast.LENGTH_SHORT).show();
+        if (!pack.supportsDevice()) {
+            Toast.makeText(activity, activity.getString(
+                    io.github.abdurazaaqmohammed.MPManager.R.string.tools_hub_min_sdk, pack.minSdk()), Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!pack.hasChecksum()) {
+            Toast.makeText(activity, "Pack has no published checksum; refresh the catalog or install a local test APK.",
+                    Toast.LENGTH_LONG).show();
             if (action != null) action.setEnabled(true);
             return;
         }
-        Toast.makeText(activity, activity.getString(io.github.abdurazaaqmohammed.MPManager.R.string.hc_downloading_x, pack.title), Toast.LENGTH_SHORT).show();
+        synchronized (PackPrompts.class) {
+            if (!DOWNLOADING.add(pack.id)) {
+                Toast.makeText(activity, "This pack is already downloading", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        Context appContext = activity.getApplicationContext();
+        WeakReference<Activity> owner = new WeakReference<>(activity);
+        WeakReference<View> actionView = new WeakReference<>(action);
+        long downloadId = PackManager.enqueueDownload(activity, pack);
+        if (downloadId < 0) {
+            synchronized (PackPrompts.class) { DOWNLOADING.remove(pack.id); }
+            Toast.makeText(activity, "Download URL is missing", Toast.LENGTH_SHORT).show();
+            if (action != null) action.setEnabled(true);
+            return;
+        }
+        Toast.makeText(activity, "Downloading " + pack.title + "\u2026", Toast.LENGTH_SHORT).show();
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -126,25 +162,25 @@ public final class PackPrompts {
                 } catch (Exception ignored) {
                 }
                 if (!ok) {
-                    Toast.makeText(activity, io.github.abdurazaaqmohammed.MPManager.R.string.hc_download_failed, Toast.LENGTH_SHORT).show();
-                    if (action != null) {
-                        try {
-                            activity.runOnUiThread(() -> action.setEnabled(true));
-                        } catch (Exception ignored) {
-                        }
-                    }
+                    synchronized (PackPrompts.class) { DOWNLOADING.remove(pack.id); }
+                    Toast.makeText(appContext, "Download failed", Toast.LENGTH_SHORT).show();
+                    View button = actionView.get();
+                    if (button != null) button.setEnabled(true);
                     return;
                 }
-                File downloaded = PackManager.downloadOutput(activity, pack.id);
+                File downloaded = PackManager.downloadOutput(appContext, pack.id);
                 new Thread(() -> {
-                    String error = PackManager.installDownloadedPack(activity, pack, downloaded);
-                    activity.runOnUiThread(() -> {
+                    String error = PackManager.installDownloadedPack(appContext, pack, downloaded);
+                    synchronized (PackPrompts.class) { DOWNLOADING.remove(pack.id); }
+                    new Handler(Looper.getMainLooper()).post(() -> {
                         if (error == null) {
-                            Toast.makeText(activity, pack.title + " installed", Toast.LENGTH_SHORT).show();
-                            if (onInstalled != null) onInstalled.run();
+                            Toast.makeText(appContext, pack.title + " installed", Toast.LENGTH_SHORT).show();
+                            Activity live = owner.get();
+                            if (live != null && !live.isFinishing() && !live.isDestroyed() && onInstalled != null) onInstalled.run();
                         } else {
-                            Toast.makeText(activity, error, Toast.LENGTH_LONG).show();
-                            if (action != null) action.setEnabled(true);
+                            Toast.makeText(appContext, error, Toast.LENGTH_LONG).show();
+                            View button = actionView.get();
+                            if (button != null) button.setEnabled(true);
                         }
                     });
                 }).start();
@@ -156,7 +192,6 @@ public final class PackPrompts {
             // exported: RECEIVER_NOT_EXPORTED drops it silently and the pack
             // is never installed. Only the system can send a protected
             // broadcast, so exporting it exposes nothing.
-            Context appContext = activity.getApplicationContext();
             if (Build.VERSION.SDK_INT > 32) {
                 appContext.registerReceiver(receiver,
                         new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
@@ -165,7 +200,12 @@ public final class PackPrompts {
                 appContext.registerReceiver(receiver,
                         new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
             }
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            synchronized (PackPrompts.class) { DOWNLOADING.remove(pack.id); }
+            DownloadManager manager = (DownloadManager) appContext.getSystemService(Context.DOWNLOAD_SERVICE);
+            if (manager != null) manager.remove(downloadId);
+            Toast.makeText(appContext, "Could not start pack download", Toast.LENGTH_LONG).show();
+            if (action != null) action.setEnabled(true);
         }
     }
 }

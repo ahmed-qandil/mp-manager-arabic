@@ -12,7 +12,9 @@ import com.lilincpp.github.libezftp.callback.OnEZFtpCallBack;
 import com.lilincpp.github.libezftp.callback.OnEZFtpDataTransferCallback;
 import com.lilincpp.github.libezftp.exceptions.EZFtpNoInitException;
 
+import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
+import org.apache.commons.net.ftp.FTPReply;
 import org.apache.commons.net.ftp.FTPSClient;
 import org.apache.commons.net.ftp.FTPFile;
 import org.apache.commons.net.io.CopyStreamEvent;
@@ -27,6 +29,8 @@ import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.net.ssl.X509TrustManager;
 
@@ -105,20 +109,17 @@ final class EZFtpClientImpl implements IEZFtpClient {
     @Override
     public void release() {
         synchronized (lock) {
-            //disconnect if it is currently connected
-            if (ftpClient != null && isConnected()) {
-                disconnect();
-            }
-            //release work thread
-            final HandlerThread temp = taskThread;
-            if (temp.isAlive()) {
-                temp.quit();
-            }
-            //clear message queue
-            if (taskHandler != null) {
-                taskHandler.removeCallbacksAndMessages(null);
-            }
+            if (!isInit) return;
             isInit = false;
+            // Do not enqueue disconnect and then remove that very runnable.
+            // Cleanup stays on the FTP worker, never Android's UI thread.
+            taskHandler.removeCallbacksAndMessages(null);
+            taskHandler.post(() -> {
+                try {
+                    if (ftpClient != null && ftpClient.isConnected()) ftpClient.disconnect();
+                } catch (IOException ignored) {}
+                finally { taskThread.quitSafely(); }
+            });
         }
     }
 
@@ -185,15 +186,21 @@ final class EZFtpClientImpl implements IEZFtpClient {
         checkInit();
         this.securityType = securityType;
         Log.d(TAG, "connect ftp server : serverIp = " + serverIp + ",port = " + port
-                + ",user = " + userName + ",pw = " + password + ",securityType = " + securityType);
+                + ",securityType = " + securityType);
         taskHandler.post(() -> {
             try {
                 ftpClient = createFtpClient(securityType);
+                ftpClient.setConnectTimeout(20000);
+                ftpClient.setDefaultTimeout(20000);
+                ftpClient.setAutodetectUTF8(true);
                 ftpClient.connect(serverIp, port);
                 if (!ftpClient.login(userName, password)) {
                     callbackNormalFail(callBack, EZFtpResultCode.RESULT_FAIL, "Login failed!");
                     return;
                 }
+                ftpClient.enterLocalPassiveMode();
+                ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+                ftpClient.setDataTimeout(60000);
                 if (securityType == IEZFtpClient.SECURITY_FTPS_EXPLICIT && ftpClient instanceof FTPSClient) {
                     ((FTPSClient) ftpClient).execPBSZ(0);
                     ((FTPSClient) ftpClient).execPROT("P");
@@ -244,10 +251,16 @@ final class EZFtpClientImpl implements IEZFtpClient {
 
     @Override
     public void getCurDirFileList(@Nullable final OnEZFtpCallBack<List<EZFtpFile>> callBack) {
+        getDirectoryFileList(curDirPath, callBack);
+    }
+
+    @Override public void getDirectoryFileList(String path, OnEZFtpCallBack<List<EZFtpFile>> callBack) {
         checkInit();
         taskHandler.post(() -> {
             try {
-                FTPFile[] ftpFiles = ftpClient.listFiles();
+                FTPFile[] ftpFiles = ftpClient.listFiles(path);
+                if (!FTPReply.isPositiveCompletion(ftpClient.getReplyCode()))
+                    throw new IOException(ftpClient.getReplyString());
                 List<EZFtpFile> ezFtpFiles = new ArrayList<>();
                 for (FTPFile ftpFile : ftpFiles) {
                     Date modifiedDate = null;
@@ -257,7 +270,7 @@ final class EZFtpClientImpl implements IEZFtpClient {
                     ezFtpFiles.add(
                             new EZFtpFile(
                                     ftpFile.getName(),
-                                    curDirPath,
+                                    path,
                                     ftpFile.getType(),
                                     ftpFile.getSize(),
                                     modifiedDate
@@ -339,7 +352,10 @@ final class EZFtpClientImpl implements IEZFtpClient {
                 });
                 boolean ok;
                 try (FileOutputStream fos = new FileOutputStream(localFile)) {
-                    ok = ftpClient.retrieveFile(remoteFile.getName(), fos);
+                    String parent = remoteFile.getRemotePath();
+                    String path = parent == null || parent.isEmpty() ? remoteFile.getName()
+                            : parent + (parent.endsWith("/") ? "" : "/") + remoteFile.getName();
+                    ok = ftpClient.retrieveFile(path, fos);
                 }
                 if (ok) {
                     callbackWrapper.onStateChanged(OnEZFtpDataTransferCallback.COMPLETED);
@@ -356,6 +372,10 @@ final class EZFtpClientImpl implements IEZFtpClient {
 
     @Override
     public void uploadFile(@NonNull final String localFilePath, @Nullable OnEZFtpDataTransferCallback callback) {
+        uploadFile(localFilePath, new File(localFilePath).getName(), callback);
+    }
+
+    @Override public void uploadFile(String localFilePath, String remotePath, OnEZFtpDataTransferCallback callback) {
         checkInit();
 
         final File localFile = new File(localFilePath);
@@ -377,7 +397,7 @@ final class EZFtpClientImpl implements IEZFtpClient {
                 });
                 boolean ok;
                 try (FileInputStream fis = new FileInputStream(localFile)) {
-                    ok = ftpClient.storeFile(localFile.getName(), fis);
+                    ok = ftpClient.storeFile(remotePath, fis);
                 }
                 if (ok) {
                     callbackWrapper.onStateChanged(OnEZFtpDataTransferCallback.COMPLETED);
@@ -403,7 +423,7 @@ final class EZFtpClientImpl implements IEZFtpClient {
         final EZFtpSampleCallbackWrapper<Void> callbackWrapper = new EZFtpSampleCallbackWrapper<>(callBack);
         taskHandler.post(() -> {
             try {
-                ftpClient.deleteFile(path);
+                if (!ftpClient.deleteFile(path)) throw new IOException(ftpClient.getReplyString());
                 callbackWrapper.onSuccess(null);
             } catch (Exception e) {
                 callbackWrapper.onFail(EZFtpResultCode.RESULT_EXCEPTION, e.getMessage());
@@ -417,7 +437,7 @@ final class EZFtpClientImpl implements IEZFtpClient {
         final EZFtpSampleCallbackWrapper<Void> callbackWrapper = new EZFtpSampleCallbackWrapper<>(callBack);
         taskHandler.post(() -> {
             try {
-                ftpClient.removeDirectory(path);
+                if (!ftpClient.removeDirectory(path)) throw new IOException(ftpClient.getReplyString());
                 callbackWrapper.onSuccess(null);
             } catch (Exception e) {
                 callbackWrapper.onFail(EZFtpResultCode.RESULT_EXCEPTION, e.getMessage());
@@ -431,7 +451,7 @@ final class EZFtpClientImpl implements IEZFtpClient {
         final EZFtpSampleCallbackWrapper<Void> callbackWrapper = new EZFtpSampleCallbackWrapper<>(callBack);
         taskHandler.post(() -> {
             try {
-                ftpClient.rename(oldPath, newPath);
+                if (!ftpClient.rename(oldPath, newPath)) throw new IOException(ftpClient.getReplyString());
                 callbackWrapper.onSuccess(null);
             } catch (Exception e) {
                 callbackWrapper.onFail(EZFtpResultCode.RESULT_EXCEPTION, e.getMessage());
@@ -445,11 +465,26 @@ final class EZFtpClientImpl implements IEZFtpClient {
         final EZFtpSampleCallbackWrapper<Void> callbackWrapper = new EZFtpSampleCallbackWrapper<>(callBack);
         taskHandler.post(() -> {
             try {
-                ftpClient.makeDirectory(path);
+                if (!ftpClient.makeDirectory(path)) throw new IOException(ftpClient.getReplyString());
                 callbackWrapper.onSuccess(null);
             } catch (Exception e) {
                 callbackWrapper.onFail(EZFtpResultCode.RESULT_EXCEPTION, e.getMessage());
             }
+        });
+    }
+
+    @Override public void getAvailableSpace(@Nullable OnEZFtpCallBack<Long> callback) {
+        checkInit();
+        taskHandler.post(() -> {
+            try {
+                Long available = null;
+                if (ftpClient.sendCommand("AVBL") == 213) {
+                    Matcher number = Pattern.compile("^213\\s+(\\d+)\\b")
+                            .matcher(ftpClient.getReplyString().trim());
+                    if (number.find()) available = Long.parseLong(number.group(1));
+                }
+                callbackNormalSuccess(callback, available);
+            } catch (Exception e) { callbackNormalFail(callback, EZFtpResultCode.RESULT_EXCEPTION, e.getMessage()); }
         });
     }
 }

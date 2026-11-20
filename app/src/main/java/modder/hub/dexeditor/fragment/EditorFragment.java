@@ -38,6 +38,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.res.Configuration;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
@@ -57,6 +58,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.fragment.app.Fragment;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -70,7 +72,7 @@ import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.Objects;
 
-import io.github.abdurazaaqmohammed.utils.CopyUtil;
+import io.github.abdurazaaqmohammed.util.io.CopyUtil;
 import io.github.codehasan.colorpicker.extensions.Extensions;
 import io.github.rosemoe.sora.event.ContentChangeEvent;
 import io.github.rosemoe.sora.event.SelectionChangeEvent;
@@ -87,6 +89,7 @@ import io.github.rosemoe.sora.text.Cursor;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import io.github.rosemoe.sora.widget.component.EditorTextActionWindow;
 import io.github.abdurazaaqmohammed.MPManager.R;
+import io.github.rosemoe.sora.widget.schemes.EditorColorScheme;
 import modder.hub.dexeditor.activity.DexEditorActivity;
 import modder.hub.dexeditor.smali.SmaliInstructionHelper;
 import modder.hub.dexeditor.utils.CustomAutoComplete;
@@ -349,7 +352,7 @@ public class EditorFragment extends Fragment implements SmaliMethodFieldListFrag
             try {
                 Activity activity = getActivity();
                 if (activity instanceof DexEditorActivity dexActivity) {
-                    final String smaliCode = DexEditorActivity.classTree.getSmaliByType(Objects.requireNonNull(DexEditorActivity.classTree.classMap.get(className)));
+                    final String smaliCode = dexActivity.classTree.getSmaliByType(Objects.requireNonNull(dexActivity.classTree.classMap.get(className)));
 
                     runOnUiThread(() -> {
                         if (loadingProgress != null) loadingProgress.setVisibility(View.GONE);
@@ -423,31 +426,28 @@ public class EditorFragment extends Fragment implements SmaliMethodFieldListFrag
     private static Language cachedSmaliLanguage;
     private static TextMateColorScheme cachedColorScheme;
     private static String[] cachedInstructions;
+    private static String cachedThemeName;
 
     public static void clearCache() {
         cachedSmaliLanguage = null;
         cachedColorScheme = null;
         cachedInstructions = null;
+        cachedThemeName = null;
     }
 
     // sora editor theme
     public static synchronized void ensureLanguageInitialized(Context context) {
-        if (cachedSmaliLanguage != null) return;
+        String themeName = currentEditorThemeName(context);
+        if (cachedSmaliLanguage != null && themeName.equals(cachedThemeName)) return;
         try {
             initTMStatic(context);
             ThemeRegistry registry = ThemeRegistry.getInstance();
-            String themeName = "dark.json";
+            // The theme used to be hardcoded to dark.json (twice), which rendered
+            // light gray text on the light editor background.
+            cachedThemeName = themeName;
             IThemeSource themeSource = null;
             try {
-                themeSource = IThemeSource.fromInputStream(context.getAssets().open("themes/dark.json"), themeName, null);
-                registry.loadTheme(themeSource);
-                registry.setTheme(themeName);
-            } catch (Exception e) {
-                Log.e("EditorFragment", "Theme load error", e);
-            }
-
-            try {
-                themeSource = IThemeSource.fromInputStream(context.getAssets().open("themes/dark.json"), themeName, null);
+                themeSource = IThemeSource.fromInputStream(context.getAssets().open("themes/" + themeName), themeName, null);
                 registry.loadTheme(themeSource);
                 registry.setTheme(themeName);
             } catch (Exception e) {
@@ -463,10 +463,26 @@ public class EditorFragment extends Fragment implements SmaliMethodFieldListFrag
                 Log.e("EditorFragment", "Smali language load error", e);
             }
             cachedColorScheme = TextMateColorScheme.create(registry);
+            cachedColorScheme.setColor(EditorColorScheme.MATCHED_TEXT_BACKGROUND, 0x403399FF);
             cachedInstructions = SmaliInstructionHelper.getAllSmaliInstructions();
         } catch (Exception e) {
             Log.e("EditorFragment", "Static init error", e);
         }
+    }
+
+    private static String currentEditorThemeName(Context context) {
+        try {
+            String pluginId = io.github.abdurazaaqmohammed.ui.common.theme.ThemeRegistry.getCurrentId(context);
+            if (pluginId != null) {
+                int nightMode = io.github.abdurazaaqmohammed.ui.common.theme.ThemeRegistry.modeFor(context, pluginId);
+                if (nightMode == AppCompatDelegate.MODE_NIGHT_YES) return "dark.json";
+                if (nightMode == AppCompatDelegate.MODE_NIGHT_NO) return "light.json";
+            }
+        } catch (Exception ignored) {
+        }
+        boolean dark = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        return dark ? "dark.json" : "light.json";
     }
 
     private static void initTMStatic(Context context) {

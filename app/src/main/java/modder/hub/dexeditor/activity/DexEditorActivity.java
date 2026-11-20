@@ -48,6 +48,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -60,6 +61,7 @@ import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -70,7 +72,10 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AlertDialog;
-import io.github.abdurazaaqmohammed.core.ui.base.BaseActivity;
+
+import io.github.abdurazaaqmohammed.data.prefs.SearchHistoryDropdown;
+import io.github.abdurazaaqmohammed.data.prefs.SearchHistoryHelper;
+import io.github.abdurazaaqmohammed.ui.common.base.BaseActivity;
 import androidx.appcompat.widget.PopupMenu;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
@@ -85,27 +90,38 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.lifecycle.ViewModel;
 
 import com.android.tools.smali.smali2.Smali;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.textfield.TextInputLayout;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
 import io.github.abdurazaaqmohammed.ui.UiFields;
-import io.github.abdurazaaqmohammed.ui.activities.EditorSettingsActivity;
+import io.github.abdurazaaqmohammed.ui.editor.EditorSettingsActivity;
+import io.github.abdurazaaqmohammed.ui.editor.DexEditorSession;
+import io.github.abdurazaaqmohammed.ui.common.util.KeyboardUtil;
+import io.github.abdurazaaqmohammed.data.prefs.MinimizedEditors;
 import io.github.codehasan.colorpicker.extensions.Extensions;
-import io.github.abdurazaaqmohammed.ui.dialogs.FilePickerDialog;
+import io.github.abdurazaaqmohammed.ui.editor.FilePickerDialog;
 import io.github.rosemoe.sora.text.Content;
 import io.github.rosemoe.sora.text.Cursor;
 import io.github.rosemoe.sora.widget.CodeEditor;
@@ -114,7 +130,7 @@ import io.github.abdurazaaqmohammed.MPManager.R;
 import modder.hub.dexeditor.adapter.HeaderAdapter;
 import modder.hub.dexeditor.adapter.StringAdapter;
 import modder.hub.dexeditor.adapter.TreeAdapter;
-import io.github.abdurazaaqmohammed.ui.fragment.UnifiedEditorFragment;
+import io.github.abdurazaaqmohammed.ui.editor.UnifiedEditorFragment;
 import modder.hub.dexeditor.fragment.GraphFragment;
 import modder.hub.dexeditor.fragment.SearchFragment;
 import modder.hub.dexeditor.fragment.SmaliMethodFieldListFragment;
@@ -127,7 +143,9 @@ import modder.hub.dexeditor.utils.ClassTree;
 import modder.hub.dexeditor.utils.DexBatchExporter;
 import modder.hub.dexeditor.utils.EditorHelper;
 import modder.hub.dexeditor.utils.EditorPositionManager;
+import modder.hub.dexeditor.utils.FileUtil;
 import modder.hub.dexeditor.utils.Notify_MT;
+import modder.hub.dexeditor.utils.RegexGuard;
 import modder.hub.dexeditor.utils.UIHelper;
 import modder.hub.dexeditor.views.AlertCircularProgress;
 import modder.hub.dexeditor.views.AlertProgress;
@@ -135,10 +153,12 @@ import modder.hub.dexeditor.views.FastScrollerRecyclerView;
 import modder.hub.dexeditor.views.SmaliInstructionsDialog;
 import modder.hub.dexeditor.views.TextActionWindow;
 import java.util.LinkedHashMap;
-import java.util.Random;
 import java.util.Stack;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
 import com.android.tools.smali.dexlib2.iface.ClassDef;
 /**
  * DexEditorActivity: The main entry point for the DEX editor.
@@ -149,19 +169,31 @@ public class DexEditorActivity extends BaseActivity {
 
     // --- Constants and Static State ---
     private static final long DOUBLE_PRESS_INTERVAL = 2000;
-    public static ClassTree classTree;
-    public static boolean isChanged;
-    public static boolean isSaved;
-    public static final List<EditorTab> tabs = new ArrayList<>();
+    private DexEditorSession session;
+    private EditorViewState retainedView;
+    public volatile ClassTree classTree;
+    public boolean isChanged;
+    public boolean isSaved;
+    public final List<EditorTab> tabs = new ArrayList<>();
     // Legacy static fields for SmaliMethodFieldListFragment state
-    public static SmaliMethodFieldListFragment smaliMethodsFieldsStringsFragment = null;
-    public static Parcelable methodRecyclerViewState = null;
-    public static Parcelable stringsRecyclerViewState = null;
-    public static boolean wasStringsVisible = false;
-    public static String lastSmaliFilePath = "";
-    private static int currentTabIndex = -1;
+    public SmaliMethodFieldListFragment smaliMethodsFieldsStringsFragment = null;
+    public Parcelable methodRecyclerViewState = null;
+    public Parcelable stringsRecyclerViewState = null;
+    public boolean wasStringsVisible = false;
+    public String lastSmaliFilePath = "";
+    private int currentTabIndex = -1;
     private final List<TreeNode> historyNodes = new ArrayList<>();
     private final List<String> stringList = new ArrayList<>();
+    /** True while the toolbar subtitle shows the translation "x/y" counter. */
+    public boolean translationCounterShown;
+    /** Explicit tab requested via the "openTab" extra (-1 when none). The
+     *  async class-tree load must not override it with the Explorer tab. */
+    private int openTabRequested = -1;
+    /** True while the Strings tab data is being parsed, so a repeated
+     *  tab entry does not spawn a second loader / loading dialog. */
+    private volatile boolean stringsLoading;
+    /** The project path subtitle shown on non-translation tabs. */
+    public String projectSubtitle;
     private final Stack<Integer> tabNavigationHistory = new Stack<>();
     private final ClassTree.CompilationOptions sessionOptions = new ClassTree.CompilationOptions();
     private final List<TreeNode> treeRoots = new ArrayList<>();
@@ -180,6 +212,7 @@ public class DexEditorActivity extends BaseActivity {
     private Menu optionsMenu;
     // --- UI Components ---
     private DrawerLayout drawerLayout;
+    private Toolbar toolbar;
     private Toolbar drawerToolbar;
     private ActionBarDrawerToggle drawerToggle;
     private ViewPager2 viewPager;
@@ -199,20 +232,105 @@ public class DexEditorActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        int theme = getIntent().getIntExtra("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
-        setTheme(theme);
+        // BaseActivity already applied the registered theme plugin. Re-applying a
+        // legacy style int here overrode it with a possibly different theme, which
+        // is what made the tabs bar and dialogs render black in light mode.
         setContentView(R.layout.dex_editor);
 
         initialize(savedInstanceState);
+        session = new ViewModelProvider(this).get(DexEditorSession.class);
+        retainedView = new ViewModelProvider(this).get(EditorViewState.class);
+        try {
+            session.initialize(this, getIntent(), savedInstanceState);
+            initializeLogic();
+        } catch (Exception e) {
+            showErrorDialog(e.getMessage());
+            finish();
+        }
+    }
 
-        initializeLogic();
+    /**
+     * True when the applied theme is a light one. Resolved from the theme itself
+     * rather than from a legacy style id, so it stays correct for theme plugins.
+     */
+    public boolean isLightTheme() {
+        try {
+            TypedValue value = new TypedValue();
+            if (getTheme().resolveAttribute(android.R.attr.isLightTheme, value, true)) return value.data != 0;
+        } catch (Exception ignored) {
+        }
+        return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                != Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    /** colorOnSurface of the applied theme, with a sane fallback. */
+    public int onSurfaceColor() {
+        int resolved = themeColor(com.google.android.material.R.attr.colorOnSurface, 0);
+        if (resolved != 0) return resolved;
+        return isLightTheme() ? 0xFF1C1B1F : 0xFFE6E1E5;
+    }
+
+    /** colorSurface of the applied theme, with a sane fallback. */
+    public int surfaceColor() {
+        int resolved = themeColor(com.google.android.material.R.attr.colorSurface, 0);
+        if (resolved != 0) return resolved;
+        return isLightTheme() ? 0xFFFFFBFE : 0xFF1C1B1F;
+    }
+
+    private int themeColor(int attr, int fallback) {
+        try {
+            TypedValue value = new TypedValue();
+            if (getTheme().resolveAttribute(attr, value, true)) {
+                if (value.resourceId != 0) {
+                    int color = ContextCompat.getColor(this, value.resourceId);
+                    if (color != 0) return color;
+                }
+                if (value.data != 0) return value.data;
+            }
+        } catch (Exception ignored) {
+        }
+        return fallback;
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        retainViewState();
+        if (session != null) session.saveWorkspace(state);
+        super.onSaveInstanceState(state);
     }
 
     @Override
     protected void onDestroy() {
+        if (session != null) session.setFinishedCleanly(isFinishing());
+        if (!isFinishing()) retainViewState();
+        if (isFinishing() && classTree != null) classTree.saveStateListener = (changed, saved) -> {};
         super.onDestroy();
         UnifiedEditorFragment.clearCache();
+    }
+
+    private void retainViewState() {
+        if (retainedView == null || tabsAdapter == null) return;
+        retainedView.tabs.clear();
+        retainedView.tabs.addAll(tabs);
+        retainedView.history.clear();
+        retainedView.history.addAll(historyNodes);
+        retainedView.selectedTab = currentTabIndex;
+        retainedView.explorerTab = explorerViewPager.getCurrentItem();
+        retainedView.editorVisible = viewPager.getVisibility() == View.VISIBLE;
+        retainedView.changed = isChanged;
+        retainedView.saved = isSaved;
+        retainedView.initialized = true;
+    }
+
+    public static class EditorViewState extends ViewModel {
+        final List<EditorTab> tabs = new ArrayList<>();
+        final List<TreeNode> history = new ArrayList<>();
+        int selectedTab = -1;
+        int explorerTab;
+        boolean editorVisible;
+        boolean changed;
+        boolean saved;
+        boolean initialized;
     }
 
     @SuppressLint("MissingSuperCall")
@@ -249,11 +367,22 @@ public class DexEditorActivity extends BaseActivity {
             }
         }
 
-        if (anyModified || isChanged || isCompilationOptionsActive()) {
+        if (anyModified || isChanged) {
             showExitConfirmation();
             return;
         }
 
+        if (isCompilationOptionsActive()) {
+            // Active stripping options are only unsaved work when they would actually
+            // change the dexes - a dex with no debug info to strip needs no prompt.
+            confirmExitIfOptionsEffective();
+            return;
+        }
+
+        promptDoublePressExit();
+    }
+
+    private void promptDoublePressExit() {
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastBackPressTime < DOUBLE_PRESS_INTERVAL) {
             exitActivity();
@@ -261,6 +390,60 @@ public class DexEditorActivity extends BaseActivity {
             lastBackPressTime = currentTime;
             Extensions.showMessage(this, "Press back again to exit");
         }
+    }
+
+    /** Cache of the last no-op scan: key serializes the options the verdict belongs to. */
+    private String optionsEffectCacheKey;
+    private boolean optionsEffectCacheValue;
+
+    private String optionsEffectKey() {
+        ClassTree.CompilationOptions options = classTree != null
+                ? classTree.getCompilationOptions() : sessionOptions;
+        return options.dexVersion + "|" + options.removeAllDebug + "|" + options.removeDebugSource
+                + "|" + options.removeDebugLine + "|" + options.removeDebugParam
+                + "|" + options.removeDebugPrologue + "|" + options.removeDebugLocal;
+    }
+
+    /**
+     * Decides whether the exit prompt is needed while compilation options are active but no
+     * tab was edited: scans the loaded dexes for debug info the options would strip, so a
+     * dex that has nothing to remove exits without the "Unsaved changes" dialog. The scan
+     * runs off the UI thread (large dexes) and its verdict is cached per options state.
+     */
+    private void confirmExitIfOptionsEffective() {
+        String key = optionsEffectKey();
+        if (key.equals(optionsEffectCacheKey)) {
+            if (optionsEffectCacheValue) showExitConfirmation();
+            else promptDoublePressExit();
+            return;
+        }
+
+        AlertProgress progress = new AlertProgress(this);
+        progress.setMessage(getString(R.string.processing));
+        progress.setCancelable(false);
+        progress.setCanceledOnTouchOutside(false);
+        progress.show();
+
+        final ClassTree.CompilationOptions options = classTree != null
+                ? classTree.getCompilationOptions() : sessionOptions;
+        final ClassTree tree = classTree;
+        new Thread(() -> {
+            // Fail safe: any scan trouble falls back to prompting.
+            boolean effective = true;
+            try {
+                effective = tree != null && tree.optionsWouldChangeOutput(options);
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+            final boolean finalEffective = effective;
+            runOnUiThread(() -> {
+                progress.dismiss();
+                optionsEffectCacheKey = key;
+                optionsEffectCacheValue = finalEffective;
+                if (finalEffective) showExitConfirmation();
+                else promptDoublePressExit();
+            });
+        }, "dex-options-check").start();
     }
 
 
@@ -273,13 +456,13 @@ public class DexEditorActivity extends BaseActivity {
         classListContainer = findViewById(R.id.class_list_container);
         viewPager = findViewById(R.id.view_pager);
         tabsRecyclerView = findViewById(R.id.tabs_recycler_view);
-        Toolbar toolbar = findViewById(R.id._toolbar);
+        toolbar = findViewById(R.id._toolbar);
         setSupportActionBar(toolbar);
 
         drawerToolbar = findViewById(R.id.drawer_toolbar);
-        drawerToolbar.setOverflowIcon(ContextCompat.getDrawable(this, R.drawable.ic_more_mt));
+        drawerToolbar.setOverflowIcon(ContextCompat.getDrawable(this, R.drawable.baseline_more_vert_24));
         if (drawerToolbar.getOverflowIcon() != null) {
-            DrawableCompat.setTint(drawerToolbar.getOverflowIcon(), Color.WHITE);
+            DrawableCompat.setTint(drawerToolbar.getOverflowIcon(), onSurfaceColor());
         }
         setupDrawerToolbar();
 
@@ -288,6 +471,17 @@ public class DexEditorActivity extends BaseActivity {
         ImageButton btnSave = findViewById(R.id.btn_save);
         ImageButton btnEdit = findViewById(R.id.btn_edit);
         ImageButton btnFile = findViewById(R.id.btn_file);
+
+        // The toolbar ImageButtons ship with white sources: on a light toolbar
+        // they were white-on-white. Tint with the on-surface color and dim the
+        // disabled state (undo/redo start disabled) so both themes read well.
+        ColorStateList buttonTint = new ColorStateList(
+                new int[][]{ {-android.R.attr.state_enabled}, {} },
+                new int[]{ (onSurfaceColor() & 0x00FFFFFF) | 0x61000000, onSurfaceColor() });
+        ImageButton[] toolbarButtons = {btnUndo, btnRedo, btnSave, btnEdit, btnFile};
+        for (ImageButton button : toolbarButtons) {
+            if (button != null) button.setImageTintList(buttonTint);
+        }
 
         if (btnUndo != null) btnUndo.setOnClickListener(v -> {
             UnifiedEditorFragment f = getCurrentFragment();
@@ -308,10 +502,16 @@ public class DexEditorActivity extends BaseActivity {
             UnifiedEditorFragment f = getCurrentFragment();
             if (f != null) f.showEditMenu(btnEdit);
         });
-        if (btnFile != null) btnFile.setOnClickListener(v -> {
-            UnifiedEditorFragment f = getCurrentFragment();
-            if (f != null) f.showFileMenu(btnFile);
-        });
+        if (btnFile != null) {
+            btnFile.setOnClickListener(v -> {
+                UnifiedEditorFragment f = getCurrentFragment();
+                if (f != null) f.showFileMenu(btnFile);
+            });
+            btnFile.setOnLongClickListener(v -> {
+                minimizeThis();
+                return true;
+            });
+        }
 
         drawerToggle = new ActionBarDrawerToggle(this, drawerLayout, toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close);
         drawerLayout.addDrawerListener(drawerToggle);
@@ -419,9 +619,15 @@ public class DexEditorActivity extends BaseActivity {
             public void onPageSelected(int position) {
                 if (position == 3 && stringList.isEmpty()) loadStrings();
                 refreshExplorerPage(position);
+                if (position != 3 && getSupportActionBar() != null && translationCounterShown) {
+                    // Leaving the translation tab: restore the project subtitle.
+                    translationCounterShown = false;
+                    setToolbarSubtitle(projectSubtitle);
+                }
             }
         });
         int openTab = getIntent().getIntExtra("openTab", -1);
+        openTabRequested = openTab;
         if (openTab >= 0 && openTab < 4 && explorerViewPager != null) explorerViewPager.setCurrentItem(openTab, false);
     }
 
@@ -440,15 +646,15 @@ public class DexEditorActivity extends BaseActivity {
 
         EditorPositionManager.getInstance(this).clear();
 
-        File[] cacheFiles = getCacheDir().listFiles();
-        if (cacheFiles != null) {
-            for (File file : cacheFiles) {
-                if (file.isDirectory() && file.getName().startsWith("dex_editor_")
-                        && !ClassTree.isWorkDirClaimed(file.getAbsolutePath())) {
-                    deleteRecursive(file);
-                }
-            }
+        if (retainedView.initialized) {
+            tabs.addAll(retainedView.tabs);
+            historyNodes.addAll(retainedView.history);
+            isChanged = retainedView.changed;
+            isSaved = retainedView.saved;
+            explorerViewPager.setCurrentItem(retainedView.explorerTab, false);
         }
+        tabAdapter.notifyDataSetChanged();
+        tabsAdapter.notifyDataSetChanged();
 
         List<String> dexPaths = getIntent().getStringArrayListExtra("SelectedDexFiles");
         setTitle(R.string.dex_editor_plus);
@@ -459,11 +665,8 @@ public class DexEditorActivity extends BaseActivity {
         } else fabDelete.setColorFilter(new LightingColorFilter(Color.BLACK, 0xFFFFFFFF));
         fabDelete.hide();
 
-        String uniqueId = System.currentTimeMillis() + "_" + System.nanoTime() + "_" + (new Random().nextInt(9000) + 1000);
-        File cacheDir = new File(getCacheDir(), "dex_editor_" + uniqueId);
-
         if (dexPaths != null && !dexPaths.isEmpty()) {
-            new LoadDexThread(dexPaths, cacheDir.getAbsolutePath()).start();
+            new LoadDexThread().start();
         } else {
             showErrorDialog("No DEX files provided");
             finish();
@@ -472,18 +675,26 @@ public class DexEditorActivity extends BaseActivity {
 
     public void loadStrings() {
         if (classTree == null) return;
+        if (stringsLoading) return;
+        stringsLoading = true;
         showProcessingProgress(true);
         new Thread(() -> {
             try {
                 final List<String> strings = classTree.getAllStrings();
+                Collections.sort(strings);
                 runOnUiThread(() -> {
+                    stringsLoading = false;
                     stringList.clear();
                     stringList.addAll(strings);
                     refreshExplorerPage(3);
+                    // Refresh the toolbar counter from the source of truth —
+                    // an adapter built before the data landed would report 0/0.
+                    updateTranslationCounter(0, stringList.size());
                     showProcessingProgress(false);
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
+                    stringsLoading = false;
                     showProcessingProgress(false);
                     showErrorDialog("Failed to load strings: " + e.getMessage());
                 });
@@ -540,6 +751,10 @@ public class DexEditorActivity extends BaseActivity {
             getSupportActionBar().setSubtitle(null);
         } else {
             getSupportActionBar().setTitle(R.string.dex_editor_plus);
+            if (explorerViewPager != null && explorerViewPager.getCurrentItem() == 3 && translationCounterShown) {
+                // Keep the translation counter; it tracks the strings tab.
+                return;
+            }
             setToolbarSubtitle(null);
         }
         int btnVis = editorVisible ? View.VISIBLE : View.GONE;
@@ -556,6 +771,7 @@ public class DexEditorActivity extends BaseActivity {
     }
 
     public void setToolbarSubtitle(String subtitle) {
+        projectSubtitle = subtitle;
         if (getSupportActionBar() == null) return;
         if (viewPager.getVisibility() != View.VISIBLE) {
             getSupportActionBar().setSubtitle((subtitle == null || subtitle.isEmpty()) ? "Temporary project" : subtitle.replace("/", "."));
@@ -579,11 +795,52 @@ public class DexEditorActivity extends BaseActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         this.optionsMenu = menu;
         getMenuInflater().inflate(viewPager.getVisibility() == View.VISIBLE ? R.menu.editor_menu : R.menu.dex_editor_main_menu, menu);
+        tintMenuIcons(menu);
+        if (toolbar != null) {
+            toolbar.post(() -> {
+                View more = toolbar.findViewById(R.id.action_more);
+                if (more != null) {
+                    more.setOnLongClickListener(v -> {
+                        minimizeThis();
+                        return true;
+                    });
+                }
+            });
+        }
         return true;
+    }
+
+    /**
+     * The editor menu icons are white resources; on a light toolbar they were
+     * white-on-white and effectively invisible. Tint every icon (submenus
+     * included) with the theme's on-surface color so they stay readable on
+     * both light and dark toolbars.
+     */
+    private void tintMenuIcons(Menu menu) {
+        try {
+            int tint = onSurfaceColor();
+            for (int i = 0; i < menu.size(); i++) {
+                tintMenuItemAndSubmenu(menu.getItem(i), tint);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void tintMenuItemAndSubmenu(MenuItem item, int tint) {
+        if (item.getIcon() != null) {
+            DrawableCompat.setTint(item.getIcon(), tint);
+        }
+        if (item.hasSubMenu()) {
+            Menu submenu = item.getSubMenu();
+            for (int i = 0; i < submenu.size(); i++) {
+                tintMenuItemAndSubmenu(submenu.getItem(i), tint);
+            }
+        }
     }
 
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
+        tintMenuIcons(menu);
         if (viewPager.getVisibility() == View.VISIBLE && currentTabIndex != -1 && currentTabIndex < tabs.size()) {
             EditorTab tab = tabs.get(currentTabIndex);
             boolean isSmali = tab.type == 0;
@@ -606,6 +863,16 @@ public class DexEditorActivity extends BaseActivity {
 
             MenuItem jumpToLine = menu.findItem(R.id.jumpToLine);
             if (jumpToLine != null) jumpToLine.setVisible(!isGraph);
+
+            // Same options the regular text editor offers, available for smali
+            // and plain text tabs alike (graph tabs have no text cursor).
+            int[] commonItems = {R.id.search, R.id.syntax, R.id.previous_position,
+                    R.id.next_position, R.id.start_of_line, R.id.end_of_line,
+                    R.id.action_search_panel};
+            for (int commonId : commonItems) {
+                MenuItem commonItem = menu.findItem(commonId);
+                if (commonItem != null) commonItem.setVisible(!isGraph);
+            }
 
             MenuItem readOnlyItem = menu.findItem(R.id.read_only);
             readOnlyItem.setVisible(isSmali);
@@ -675,14 +942,25 @@ public class DexEditorActivity extends BaseActivity {
                 saveCurrentTab();
                 return true;
             } else if (id == R.id.search) {
-                // testing , i willl add a search bar like my modder hub app have.
-                // but I have plan to replace the sora editor with my custom MH-Texteditor
-                try {
-                    Method method = editor.getSearcher().getClass().getMethod("showSearchPanel");
-                    method.invoke(editor.getSearcher());
-                } catch (Exception ignored) {
-                    // ignored
-                }
+                editorFragment.showSearchPanel();
+                return true;
+            } else if (id == R.id.action_search_panel) {
+                editorFragment.showSearchPanel();
+                return true;
+            } else if (id == R.id.syntax) {
+                editorFragment.showSyntaxDialog();
+                return true;
+            } else if (id == R.id.previous_position) {
+                editorFragment.navigateHistory(false);
+                return true;
+            } else if (id == R.id.next_position) {
+                editorFragment.navigateHistory(true);
+                return true;
+            } else if (id == R.id.start_of_line) {
+                editorFragment.jumpToStartOfLine();
+                return true;
+            } else if (id == R.id.end_of_line) {
+                editorFragment.jumpToEndOfLine();
                 return true;
             } else if (id == R.id.navigation) {
                 editorFragment.showMethodFieldList();
@@ -918,14 +1196,17 @@ public class DexEditorActivity extends BaseActivity {
             if (undo != null) {
                 undo.setEnabled(fragment.getEditor().canUndo());
                 if (undo.getIcon() != null) {
-                    DrawableCompat.setTint(undo.getIcon(), Color.WHITE);
+                    // Used to force Color.WHITE here, which re-whitened the icons
+                    // on every undo/redo change and made them invisible on the
+                    // light toolbar no matter what onCreateOptionsMenu tinted.
+                    DrawableCompat.setTint(undo.getIcon(), onSurfaceColor());
                     undo.getIcon().setAlpha(undo.isEnabled() ? 255 : 100);
                 }
             }
             if (redo != null) {
                 redo.setEnabled(fragment.getEditor().canRedo());
                 if (redo.getIcon() != null) {
-                    DrawableCompat.setTint(redo.getIcon(), Color.WHITE);
+                    DrawableCompat.setTint(redo.getIcon(), onSurfaceColor());
                     redo.getIcon().setAlpha(redo.isEnabled() ? 255 : 100);
                 }
             }
@@ -1080,16 +1361,21 @@ public class DexEditorActivity extends BaseActivity {
             targetTab.pendingColumn = column;
             targetTab.pendingQuery = query;
 
-            // If fragment is already ready, navigate now
+            // Navigate as soon as the editor is actually able to scroll. When a
+            // result is opened from the search list the editor ViewPager is still
+            // animating in (or a tab's view was recycled): jumping immediately
+            // computed the scroll against a stale layout and the view ended up
+            // somewhere else until something forced it back. consumePendingNavigation
+            // waits for attach + shown + loaded, so the jump lands right at once.
             UnifiedEditorFragment fragment = getFragmentAtIndex(tabIndex);
-            if (fragment != null && fragment.getEditor() != null && fragment.getEditor().getText().getLineCount() > lineNumber) {
-                fragment.navigateTo(lineNumber, column, query);
-                // Clear pending once navigated
-                targetTab.pendingLine = -1;
-                targetTab.pendingColumn = -1;
-                targetTab.pendingQuery = null;
-            }
+            if (fragment != null) retryPendingNavigation(fragment, 0);
         }
+    }
+
+    private void retryPendingNavigation(UnifiedEditorFragment fragment, final int attempt) {
+        if (fragment.consumePendingNavigation()) return;
+        if (attempt >= 30) return; // ~3s; postInitialize/fragment recreation still consumes it
+        new Handler(Looper.getMainLooper()).postDelayed(() -> retryPendingNavigation(fragment, attempt + 1), 100);
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -1260,6 +1546,8 @@ public class DexEditorActivity extends BaseActivity {
         SwitchCompat swRemoveDebugParam = dialogView.findViewById(R.id.sw_remove_debug_param);
         SwitchCompat swRemoveDebugPrologue = dialogView.findViewById(R.id.sw_remove_debug_prologue);
         SwitchCompat swRemoveDebugLocal = dialogView.findViewById(R.id.sw_remove_debug_local);
+        SwitchCompat swRememberOptions = dialogView.findViewById(R.id.sw_remember_options);
+        SwitchCompat swAutoSave = dialogView.findViewById(R.id.sw_autosave_background);
 
         String[] versions = {"Keep the same", "35", "37", "38", "39"}; // upto 39 is okk
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, versions);
@@ -1280,6 +1568,8 @@ public class DexEditorActivity extends BaseActivity {
         swRemoveDebugParam.setChecked(sessionOptions.removeDebugParam);
         swRemoveDebugPrologue.setChecked(sessionOptions.removeDebugPrologue);
         swRemoveDebugLocal.setChecked(sessionOptions.removeDebugLocal);
+        swRememberOptions.setChecked(dexPref.getBoolean("compile_remember_options", true));
+        swAutoSave.setChecked(dexPref.getBoolean("compile_autosave_background", false));
 
         swRemoveAllDebug.setOnCheckedChangeListener((buttonView, isChecked) -> {
             swRemoveDebugSource.setEnabled(!isChecked);
@@ -1314,10 +1604,71 @@ public class DexEditorActivity extends BaseActivity {
             sessionOptions.removeDebugParam = swRemoveDebugParam.isChecked();
             sessionOptions.removeDebugPrologue = swRemoveDebugPrologue.isChecked();
             sessionOptions.removeDebugLocal = swRemoveDebugLocal.isChecked();
+
+            boolean remember = swRememberOptions.isChecked();
+            boolean autoSave = swAutoSave.isChecked();
+            dexPref.edit()
+                    .putBoolean("compile_remember_options", remember)
+                    .putBoolean("compile_autosave_background", autoSave)
+                    .putString("compile_dex_version", remember ? sessionOptions.dexVersion : "Keep the same")
+                    .putBoolean("compile_remove_all_debug", remember && sessionOptions.removeAllDebug)
+                    .putBoolean("compile_remove_debug_source", remember && sessionOptions.removeDebugSource)
+                    .putBoolean("compile_remove_debug_line", remember && sessionOptions.removeDebugLine)
+                    .putBoolean("compile_remove_debug_param", remember && sessionOptions.removeDebugParam)
+                    .putBoolean("compile_remove_debug_prologue", remember && sessionOptions.removeDebugPrologue)
+                    .putBoolean("compile_remove_debug_local", remember && sessionOptions.removeDebugLocal)
+                    .apply();
+
+            // Apply immediately: option changes recompile every dex, and the background
+            // compiler turns that into an instant save. Both are no-ops when unchanged.
+            if (classTree != null) {
+                // A copy, never the sessionOptions reference: setCompilationOptions()
+                // compares fields, so handing back the reference it already holds would
+                // make every change here look like a no-op and the save would skip
+                // recompiling with the new options.
+                classTree.setCompilationOptions(ClassTree.copyOf(sessionOptions));
+                classTree.setAutoSaveEnabled(autoSave);
+            }
+
+            // "Remember" off means one-shot: the switches go back to the defaults the
+            // next time this dialog opens instead of keeping the last chosen values.
+            if (!remember) resetSessionCompilationOptions();
         });
         builder.setNegativeButton(android.R.string.cancel, null);
         AlertDialog dialog = builder.create();
         dialog.show();
+    }
+
+    /**
+     * Restores the persisted compilation options (and starts the background compiler when the
+     * user left it on). Called once the dex tree exists; applying the options marks every dex
+     * dirty only when the persisted options actually differ from the defaults.
+     */
+    private void applyPersistedCompilationOptions() {
+        if (classTree == null) return;
+        if (dexPref.getBoolean("compile_remember_options", true)) {
+            sessionOptions.dexVersion = dexPref.getString("compile_dex_version", sessionOptions.dexVersion);
+            sessionOptions.removeAllDebug = dexPref.getBoolean("compile_remove_all_debug", sessionOptions.removeAllDebug);
+            sessionOptions.removeDebugSource = dexPref.getBoolean("compile_remove_debug_source", sessionOptions.removeDebugSource);
+            sessionOptions.removeDebugLine = dexPref.getBoolean("compile_remove_debug_line", sessionOptions.removeDebugLine);
+            sessionOptions.removeDebugParam = dexPref.getBoolean("compile_remove_debug_param", sessionOptions.removeDebugParam);
+            sessionOptions.removeDebugPrologue = dexPref.getBoolean("compile_remove_debug_prologue", sessionOptions.removeDebugPrologue);
+            sessionOptions.removeDebugLocal = dexPref.getBoolean("compile_remove_debug_local", sessionOptions.removeDebugLocal);
+        }
+        classTree.setCompilationOptions(ClassTree.copyOf(sessionOptions));
+        classTree.setAutoSaveEnabled(dexPref.getBoolean("compile_autosave_background", false));
+    }
+
+    /** Restores the out-of-the-box compilation options. */
+    private void resetSessionCompilationOptions() {
+        sessionOptions.dexVersion = "Keep the same";
+        sessionOptions.removeAllDebug = true;
+        sessionOptions.removeDebugSource = false;
+        sessionOptions.removeDebugLine = false;
+        sessionOptions.removeDebugParam = false;
+        sessionOptions.removeDebugPrologue = false;
+        sessionOptions.removeDebugLocal = false;
+        optionsEffectCacheKey = null;
     }
 
     public void showSmaliNavigation(String tempSmaliPath, String title, int lineNo) {
@@ -1376,7 +1727,9 @@ public class DexEditorActivity extends BaseActivity {
         for (int i = tabs.size() - 1; i >= 0; i--) {
             String tabClass = tabs.get(i).className;
             if (isDirectory) {
-                if (tabClass.startsWith(name)) {
+                // Match children only: a bare startsWith(name) would also close tabs of
+                // unrelated classes that merely share the prefix (com/foo vs com/foobar).
+                if (tabClass.startsWith(name + "/")) {
                     removeTab(i);
                 }
             } else {
@@ -1388,10 +1741,14 @@ public class DexEditorActivity extends BaseActivity {
     }
 
     private boolean isCompilationOptionsActive() {
-        return sessionOptions.removeAllDebug || sessionOptions.removeDebugSource ||
-                sessionOptions.removeDebugLine || sessionOptions.removeDebugParam ||
-                sessionOptions.removeDebugPrologue || sessionOptions.removeDebugLocal ||
-                !sessionOptions.dexVersion.equals("Keep the same");
+        // Read what a save will actually use - the classTree's options - not the
+        // session holder, which resets when "Remember" is off.
+        ClassTree.CompilationOptions options = classTree != null
+                ? classTree.getCompilationOptions() : sessionOptions;
+        return options.removeAllDebug || options.removeDebugSource ||
+                options.removeDebugLine || options.removeDebugParam ||
+                options.removeDebugPrologue || options.removeDebugLocal ||
+                !options.dexVersion.equals("Keep the same");
     }
 
 
@@ -1418,9 +1775,29 @@ public class DexEditorActivity extends BaseActivity {
             builder.setPositiveButton(R.string.save_and_exit, (dialog, which) -> new SaveAndExitClickListener().onClick(null, 0));
         }
 
-        builder.setNegativeButton(android.R.string.cancel, null);
+        builder.setNegativeButton(R.string.minimize, (dialog, which) -> minimizeThis());
         builder.setNeutralButton(R.string.exit_directly, (dialog, which) -> exitActivity());
         builder.show();
+    }
+
+    public void minimizeThis() {
+        String source = null;
+        Intent launch = getIntent();
+        if (launch != null) {
+            String zip = launch.getStringExtra("zipFilePath");
+            if (zip != null && !zip.isEmpty()) {
+                source = new File(zip).getName();
+            } else {
+                List<String> dexPaths = launch.getStringArrayListExtra("SelectedDexFiles");
+                if (dexPaths != null && !dexPaths.isEmpty()) {
+                    File firstDex = new File(dexPaths.get(0));
+                    String dexName = firstDex.getName();
+                    String parentName = firstDex.getParentFile() != null ? firstDex.getParentFile().getName() : null;
+                    source = MinimizedEditors.formatTitle(dexName, parentName);
+                }
+            }
+        }
+        MinimizedEditors.minimize(this, R.string.dex_editor_plus, source);
     }
 
     // method for saviing multiple tabs
@@ -1504,10 +1881,11 @@ public class DexEditorActivity extends BaseActivity {
                     handleUndoRedo();
                     if (onSaved != null) onSaved.run();
                 });
-            } catch (final Exception e) {
+            } catch (final Throwable e) {
+                final String detail = e.getMessage() != null ? e.getMessage() : e.toString();
                 runOnUiThread(() -> {
                     pd.dismiss();
-                    Notify_MT.Notify(DexEditorActivity.this, "Error saving " + tab.title, e.getMessage(), "Close");
+                    Notify_MT.Notify(DexEditorActivity.this, "Error saving " + tab.title, detail, "Close");
                     if (onSaved != null) onSaved.run();
                 });
             }
@@ -1518,10 +1896,8 @@ public class DexEditorActivity extends BaseActivity {
         tabs.clear();
         tabNavigationHistory.clear();
         currentTabIndex = -1;
-        if (classTree != null) {
-            classTree.clearAll();
-            classTree = null;
-        }
+        if (classTree != null) classTree.saveStateListener = (changed, saved) -> {};
+        classTree = null;
 
         // Clear navigation statics to prevent state leakage
         smaliMethodsFieldsStringsFragment = null;
@@ -1535,6 +1911,9 @@ public class DexEditorActivity extends BaseActivity {
         modifiedNodes.clear();
         searchNodes.clear();
         stringList.clear();
+        // A pending strings parse may still post back; reset so a re-entry
+        // into the editor (activity reuse) starts from a clean slate.
+        stringsLoading = false;
         isSaved = false;
         isChanged = false;
         finish();
@@ -1742,16 +2121,16 @@ public class DexEditorActivity extends BaseActivity {
 
         MenuItem closeAbove = menu.findItem(3);
         closeAbove.setEnabled(index > 0);
-        UIHelper.setMenuItemColor(closeAbove, closeAbove.isEnabled() ? Color.BLACK : Color.GRAY);
+        UIHelper.setMenuItemColor(closeAbove, closeAbove.isEnabled() ? onSurfaceColor() : Color.GRAY);
 
         MenuItem closeBelow = menu.findItem(4);
         closeBelow.setEnabled(index != -1 && index < count - 1);
-        UIHelper.setMenuItemColor(closeBelow, closeBelow.isEnabled() ? Color.BLACK : Color.GRAY);
+        UIHelper.setMenuItemColor(closeBelow, closeBelow.isEnabled() ? onSurfaceColor() : Color.GRAY);
 
         // Also update other items color if needed
-        UIHelper.setMenuItemColor(menu.findItem(0), menu.findItem(0).isEnabled() ? Color.BLACK : Color.GRAY);
-        UIHelper.setMenuItemColor(menu.findItem(1), menu.findItem(1).isEnabled() ? Color.BLACK : Color.GRAY);
-        UIHelper.setMenuItemColor(menu.findItem(2), menu.findItem(2).isEnabled() ? Color.BLACK : Color.GRAY);
+        UIHelper.setMenuItemColor(menu.findItem(0), menu.findItem(0).isEnabled() ? onSurfaceColor() : Color.GRAY);
+        UIHelper.setMenuItemColor(menu.findItem(1), menu.findItem(1).isEnabled() ? onSurfaceColor() : Color.GRAY);
+        UIHelper.setMenuItemColor(menu.findItem(2), menu.findItem(2).isEnabled() ? onSurfaceColor() : Color.GRAY);
     }
 
     public static class EditorTab {
@@ -1891,12 +2270,16 @@ public class DexEditorActivity extends BaseActivity {
                 if (currentAdapter instanceof TreeAdapter) {
                     ((TreeAdapter) currentAdapter).refreshVisibleNodes();
                 } else if (currentAdapter instanceof StringAdapter) {
-                    currentAdapter.notifyDataSetChanged();
+                    // refresh() re-snapshots from the backing list, not just
+                    // re-notifies: the tab may have been built while the
+                    // strings were still parsing (lazy load), leaving the
+                    // shown copy empty until a filter re-applied it.
+                    ((StringAdapter) currentAdapter).refresh();
                 } else if (currentAdapter instanceof ConcatAdapter) {
                     List<? extends RecyclerView.Adapter<?>> adapters = ((ConcatAdapter) currentAdapter).getAdapters();
                     if(adapters.size() > 1) {
                         RecyclerView.Adapter<?> adapter = adapters.get(1);
-                        if (adapter instanceof StringAdapter) adapter.notifyDataSetChanged();
+                        if (adapter instanceof StringAdapter) ((StringAdapter) adapter).refresh();
                     }
                 } else {
                     currentAdapter.notifyDataSetChanged();
@@ -1917,8 +2300,11 @@ public class DexEditorActivity extends BaseActivity {
                         public void onNodeDeleted(TreeNode node) {
                             activity.clearPositionSaving(node.getFullName());
                             activity.removeTabsForClass(node.getFullName(), node.isDirectory());
-                            classTree.removeClass(node.getFullName());
-                            DexEditorActivity.isChanged = true;
+                            // Folder nodes carry no trailing slash, but ClassTree only treats
+                            // names ending in '/' as folder deletions; without it nothing is
+                            // recorded and every class inside survives the save.
+                            activity.classTree.removeClass(node.getFullName() + (node.isDirectory() ? "/" : ""));
+                            activity.isChanged = true;
                             activity.needsModifiedTreeRebuild = true;
                             activity.needsExplorerRefresh = true;
                             activity.refreshExplorerPage(1);
@@ -1936,6 +2322,11 @@ public class DexEditorActivity extends BaseActivity {
                         public void onSearch(TreeNode node) {
                             activity.pendingSearchPath = node.getFullName() + "/";
                             activity.explorerViewPager.setCurrentItem(2);
+                        }
+
+                        @Override
+                        public void onAddClass(TreeNode node) {
+                            activity.showAddClassDialog(node);
                         }
                     }, false);
                     break;
@@ -2054,11 +2445,13 @@ public class DexEditorActivity extends BaseActivity {
 
                     // holder trick so the click listener can reference the adapter it belongs to
                     final StringAdapter[] holder = new StringAdapter[1];
-                    boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-                    int theme = requireActivity().getIntent().getIntExtra("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
+                    int onSurface = activity.onSurfaceColor();
 
-                    StringAdapter stringAdapter = new StringAdapter(activity.stringList, text -> activity.showStringEditDialog(holder[0], btnApply, text), theme == R.style.Theme_MyApp_Light ? Color.BLACK : Color.WHITE);
+                    StringAdapter stringAdapter = new StringAdapter(activity.stringList, text -> activity.showStringEditDialog(holder[0], btnApply, text), onSurface);
                     holder[0] = stringAdapter;
+                    // MT-style "translated/total" counter in the toolbar subtitle.
+                    stringAdapter.setModifiedCountListener(activity::updateTranslationCounter);
+                    stringAdapter.refresh();
 
                     btnReload.setOnClickListener(v -> {
                         stringAdapter.clearModifications();
@@ -2081,6 +2474,15 @@ public class DexEditorActivity extends BaseActivity {
     }
 
     public void showStringEditDialog(final StringAdapter adapter, final View btnApply, final String original) {
+        // MT translation-mode style: the original string is shown read-only on
+        // top, the editable field below holds the translation.
+        final TextView originalView = new TextView(this);
+        originalView.setText(original);
+        originalView.setTextIsSelectable(true);
+        originalView.setTextColor(onSurfaceColor());
+        int textPad = (int) getDip(6);
+        originalView.setPadding(textPad, textPad, textPad, textPad);
+
         final EditText editText = new EditText(this);
         editText.setText(adapter.getPendingValue(original));
         editText.setSelection(editText.getText().length());
@@ -2092,6 +2494,7 @@ public class DexEditorActivity extends BaseActivity {
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.VERTICAL);
         container.setPadding(pad, pad, pad, pad);
+        container.addView(originalView);
         container.addView(UiFields.wrap(this, editText, getString(R.string.edit_string), 0));
         container.setLayoutParams(params);
 
@@ -2102,6 +2505,7 @@ public class DexEditorActivity extends BaseActivity {
                 .setNeutralButton(android.R.string.search_go, null)
                 .setNegativeButton(android.R.string.cancel, null)
                 .create();
+        KeyboardUtil.focusOnShow(dialog, editText, false);
         dialog.show();
 
         // Custom click listeners so "Search" doesn't auto-dismiss before we can read the field.
@@ -2117,8 +2521,9 @@ public class DexEditorActivity extends BaseActivity {
         });
     }
 
-    public void showStringFilterDialog(final StringAdapter adapter) {
+    public AlertDialog showStringFilterDialog(final StringAdapter adapter) {
         final EditText editText = new EditText(this);
+        editText.setId(R.id.dex_strings_filter_input);
         ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         editText.setLayoutParams(params);
         editText.setHint(R.string.type_to_filter);
@@ -2126,16 +2531,93 @@ public class DexEditorActivity extends BaseActivity {
 
         int pad = (int) getDip(16);
         LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
         container.setPadding(pad, pad, pad, pad);
         container.setLayoutParams(params);
-        container.addView(UiFields.wrap(this, editText, null, 0));
+        TextInputLayout filterBox = UiFields.wrap(this, editText, null, 0);
+        filterBox.setEndIconMode(TextInputLayout.END_ICON_CUSTOM);
+        filterBox.setEndIconDrawable(R.drawable.baseline_arrow_drop_down_24);
+        filterBox.setEndIconContentDescription(R.string.history);
+        filterBox.setEndIconOnClickListener(v -> {
+            var history = SearchHistoryHelper.load(this,
+                    SearchHistoryHelper.KEY_DEX_STRINGS_FILTER);
+            if (history.isEmpty()) {
+                Extensions.showMessage(this, R.string.history_empty);
+                return;
+            }
+            SearchHistoryDropdown.show(this, filterBox, history,
+                    new SearchHistoryDropdown.Listener() {
+                        @Override public void onSelect(String query) {
+                            editText.setText(query);
+                            editText.setSelection(editText.length());
+                        }
+                        @Override public void onChanged(List<SearchHistoryHelper.Item> items) {
+                            SearchHistoryHelper.save(DexEditorActivity.this,
+                                    SearchHistoryHelper.KEY_DEX_STRINGS_FILTER, items);
+                        }
+                    });
+        });
+        container.addView(filterBox);
 
-        new MaterialAlertDialogBuilder(this)
+        // Match case / regex / exactly match, like the other search dialogs of the app.
+        SharedPreferences searchPrefs = getSharedPreferences("search_prefs", MODE_PRIVATE);
+        StringAdapter.FilterSpec current = adapter.getCurrentSpec();
+        CheckBox cbMatchCase = new CheckBox(this);
+        cbMatchCase.setText(R.string.match_case);
+        CheckBox cbRegex = new CheckBox(this);
+        cbRegex.setText(R.string.regex);
+        CheckBox cbExactlyMatch = new CheckBox(this);
+        cbExactlyMatch.setText(R.string.exactly_match);
+        if (current != null && current.active && (current.matchCase || current.regex || current.exact)) {
+            cbMatchCase.setChecked(current.matchCase);
+            cbRegex.setChecked(current.regex);
+            cbExactlyMatch.setChecked(current.exact);
+        } else {
+            cbMatchCase.setChecked(searchPrefs.getBoolean("strings_filter_match_case", false));
+            cbRegex.setChecked(searchPrefs.getBoolean("strings_filter_regex", false));
+            cbExactlyMatch.setChecked(searchPrefs.getBoolean("strings_filter_exactly_match", false));
+        }
+        container.addView(cbMatchCase);
+        container.addView(cbRegex);
+        container.addView(cbExactlyMatch);
+
+        AlertDialog filterDialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.filter_strings)
                 .setView(container)
-                .setPositiveButton(R.string.apply, (d, w) -> adapter.setFilter(editText.getText().toString()))
+                .setPositiveButton(R.string.apply, null)
                 .setNegativeButton(R.string.clear, (d, w) -> adapter.setFilter(null))
-                .show();
+                .setNeutralButton(android.R.string.cancel, null)
+                .create();
+        KeyboardUtil.focusOnShow(filterDialog, editText, false);
+        filterDialog.show();
+        // Custom click so an invalid regex keeps the dialog open instead of
+        // silently closing and applying nothing.
+        filterDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String filter = editText.getText().toString();
+            if (cbRegex.isChecked() && !filter.isEmpty()) {
+                String regexError = RegexGuard.validate(filter, cbMatchCase.isChecked());
+                if (regexError != null) {
+                    Extensions.showMessage(this, regexError);
+                    return;
+                }
+            }
+            searchPrefs.edit()
+                    .putBoolean("strings_filter_match_case", cbMatchCase.isChecked())
+                    .putBoolean("strings_filter_regex", cbRegex.isChecked())
+                    .putBoolean("strings_filter_exactly_match", cbExactlyMatch.isChecked())
+                    .apply();
+            StringAdapter.FilterSpec spec = new StringAdapter.FilterSpec();
+            spec.query = filter;
+            spec.matchCase = cbMatchCase.isChecked();
+            spec.regex = cbRegex.isChecked();
+            spec.exact = cbExactlyMatch.isChecked();
+            spec.active = !filter.trim().isEmpty();
+            adapter.applyFilter(spec);
+            SearchHistoryHelper.push(this,
+                    SearchHistoryHelper.KEY_DEX_STRINGS_FILTER, filter);
+            filterDialog.dismiss();
+        });
+        return filterDialog;
     }
 
     public void showStringReplaceAllDialog() {
@@ -2150,23 +2632,29 @@ public class DexEditorActivity extends BaseActivity {
         etReplace.setHint(R.string.replace_with);
         final SwitchCompat swMatchCase = new SwitchCompat(this);
         swMatchCase.setText(R.string.match_case);
-        swMatchCase.setChecked(true);
+        swMatchCase.setChecked(getSharedPreferences("search_prefs", MODE_PRIVATE)
+                .getBoolean("strings_replace_all_match_case", true));
 
         container.addView(UiFields.wrap(this, etFind, null, 0));
         container.addView(UiFields.wrap(this, etReplace, null, 0));
         container.addView(swMatchCase);
 
-        new MaterialAlertDialogBuilder(this)
+        AlertDialog replaceAllDialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.replace_in_all_strings)
                 .setView(container)
                 .setPositiveButton(R.string.replace, (d, w) -> {
                     String find = etFind.getText().toString();
                     String replace = etReplace.getText().toString();
                     if (find.isEmpty()) return;
+                    getSharedPreferences("search_prefs", MODE_PRIVATE).edit()
+                            .putBoolean("strings_replace_all_match_case", swMatchCase.isChecked())
+                            .apply();
                     new StringBatchTask(this, null, find, replace, swMatchCase.isChecked(), null).start();
                 })
                 .setNegativeButton(android.R.string.cancel, null)
-                .show();
+                .create();
+        KeyboardUtil.focusOnShow(replaceAllDialog, etFind, false);
+        replaceAllDialog.show();
     }
 
     public void applyStringChanges(final StringAdapter adapter, final View btnApply) {
@@ -2179,16 +2667,26 @@ public class DexEditorActivity extends BaseActivity {
         }).start();
     }
 
+    /** Toolbar counter for the strings/translation tab: "modified/total". */
+    public void updateTranslationCounter(int modified, int total) {
+        if (getSupportActionBar() == null) return;
+        if (explorerViewPager != null && explorerViewPager.getCurrentItem() == 3) {
+            translationCounterShown = true;
+            getSupportActionBar().setSubtitle(modified + "/" + total);
+        }
+    }
+
     /** Switches to the Search tab and runs a "String" type search for the given exact text. */
     public void searchStringInClasses(String query) {
+        pendingStringSearchQuery = query;
         showSearchTab();
         Fragment f = getSupportFragmentManager().findFragmentByTag("f2002");
-        if (f instanceof SearchFragment) {
-            ((SearchFragment) f).runStringSearch(query);
-        } else {
-            // Fragment not created/attached yet - SearchFragment.onResume() will pick this up.
-            pendingStringSearchQuery = query;
+        if (f instanceof SearchFragment search && f.isAdded() && f.getView() != null) {
+            pendingStringSearchQuery = null;
+            search.runStringSearch(query);
         }
+        // A retained Search fragment can exist without its view/activity during
+        // pager changes. onResume consumes the pending query once it is ready.
     }
 
     private void runUsageOnSearchTab(Runnable search) {
@@ -2308,7 +2806,7 @@ public class DexEditorActivity extends BaseActivity {
 
         void start() {
             final DexEditorActivity activity = activityRef.get();
-            if (activity == null || classTree == null) return;
+            if (activity == null || activity.classTree == null) return;
 
             progressDialog = new AlertProgress(activity);
             progressDialog.setTitle(activity.getString(R.string.applying_changes));
@@ -2317,8 +2815,8 @@ public class DexEditorActivity extends BaseActivity {
             progressDialog.show();
 
             final Map<String, String> openTabsContent = new HashMap<>();
-            for (int i = 0; i < tabs.size(); i++) {
-                EditorTab tab = tabs.get(i);
+            for (int i = 0; i < activity.tabs.size(); i++) {
+                EditorTab tab = activity.tabs.get(i);
                 if (tab.type == 0) {
                     UnifiedEditorFragment ef = activity.getFragmentAtIndex(i);
                     if (ef != null && ef.getEditor() != null) {
@@ -2331,8 +2829,8 @@ public class DexEditorActivity extends BaseActivity {
 
             new Thread(() -> {
                 List<ClassDef> classes;
-                synchronized (classTree.classMap) {
-                    classes = new ArrayList<>(classTree.classMap.values());
+                synchronized (activity.classTree.classMap) {
+                    classes = new ArrayList<>(activity.classTree.classMap.values());
                 }
                 int total = classes.size();
                 int processed = 0, replacedCount = 0, affectedClasses = 0;
@@ -2346,7 +2844,7 @@ public class DexEditorActivity extends BaseActivity {
                     try {
                         String original = openTabsContent.containsKey(className)
                                 ? openTabsContent.get(className)
-                                : classTree.getSmaliByType(classDef);
+                                : activity.classTree.getSmaliByType(classDef);
 
                         Matcher m = literalPattern.matcher(original);
                         StringBuffer sb = new StringBuffer();
@@ -2363,9 +2861,9 @@ public class DexEditorActivity extends BaseActivity {
                             String modified = sb.toString();
                             try {
                                 ClassDef newDef = Smali.assemble(modified, SharedSmaliUtils.ASSEMBLE_OPTIONS, activity.dexVersion);
-                                classTree.saveClassDefIfChanged(newDef, modified);
+                                activity.classTree.saveClassDefIfChanged(newDef, modified);
                             } catch (Exception e) {
-                                classTree.saveSmali(className, modified);
+                                activity.classTree.saveSmali(className, modified);
                             }
                             replacedCount += countInClass;
                             affectedClasses++;
@@ -2386,8 +2884,8 @@ public class DexEditorActivity extends BaseActivity {
                     if (progressDialog != null && progressDialog.isShowing()) progressDialog.dismiss();
                     if (!updatedTabs.isEmpty()) {
                         for (Map.Entry<String, String> e : updatedTabs.entrySet()) {
-                            for (int i = 0; i < tabs.size(); i++) {
-                                EditorTab tab = tabs.get(i);
+                            for (int i = 0; i < activity.tabs.size(); i++) {
+                                EditorTab tab = activity.tabs.get(i);
                                 if (tab.className.equals(e.getKey()) && tab.type == 0) {
                                     tab.content = e.getValue();
                                     UnifiedEditorFragment ef = activity.getFragmentAtIndex(i);
@@ -2397,7 +2895,7 @@ public class DexEditorActivity extends BaseActivity {
                         }
                     }
                     Notify_MT.Notify(activity, "Info", "Replaced " + finalReplaced + " occurrence(s) in " + finalAffected + " class(es).", "Close");
-                    isChanged = true;
+                    activity.isChanged = true;
                     activity.needsModifiedTreeRebuild = true;
                     activity.refreshExplorerPage(1);
                     if (onDone != null) onDone.run();
@@ -2424,25 +2922,41 @@ public class DexEditorActivity extends BaseActivity {
 
     // Thread to load DEX file
     private class LoadDexThread extends Thread {
-        private final List<String> paths;
-        private final String cachePath;
-
-        public LoadDexThread(List<String> paths, String cachePath) {
-            this.paths = paths;
-            this.cachePath = cachePath;
-        }
-
         @Override
         public void run() {
-            ClassTree.claimWorkDir(cachePath);
             try {
-                classTree = new ClassTree(paths, cachePath);
+                boolean firstLoad = session.tree() == null;
+                ClassTree loaded = session.load();
+                if (isDestroyed() || session.isClosed()) return;
+                classTree = loaded;
+                classTree.saveStateListener = (changed, saved) -> { isChanged = changed; isSaved = saved; };
+                if (firstLoad) applyPersistedCompilationOptions();
+                else {
+                    ClassTree.CompilationOptions options = classTree.getCompilationOptions();
+                    sessionOptions.dexVersion = options.dexVersion;
+                    sessionOptions.removeAllDebug = options.removeAllDebug;
+                    sessionOptions.removeDebugSource = options.removeDebugSource;
+                    sessionOptions.removeDebugLine = options.removeDebugLine;
+                    sessionOptions.removeDebugParam = options.removeDebugParam;
+                    sessionOptions.removeDebugPrologue = options.removeDebugPrologue;
+                    sessionOptions.removeDebugLocal = options.removeDebugLocal;
+                }
                 // Pre-build trees in background to avoid UI lag
                 final List<TreeNode> roots = classTree.buildFullTree();
                 final List<TreeNode> modified = classTree.buildEditedFullTree();
 
+                int loadedDexVer = 35;
+                try {
+                    loadedDexVer = classTree.getOpenedDexVersion();
+                } catch (Exception ignored) {
+                }
+                if (loadedDexVer <= 0) loadedDexVer = dexPref.getInt("dexVer", 35);
+                final int finalVer = loadedDexVer > 0 ? loadedDexVer : 35;
+
                 runOnUiThread(() -> {
+                    if (isDestroyed() || session.isClosed()) return;
                     try {
+                        dexVersion = finalVer;
                         treeRoots.clear();
                         treeRoots.addAll(roots);
                         modifiedNodes.clear();
@@ -2452,7 +2966,16 @@ public class DexEditorActivity extends BaseActivity {
                         // update toolbar
                         updateToolbar();
                         refreshExplorerPage(0);
-                        showTreeView();
+                        // Strings are expensive to parse, so they load on
+                        // demand when the Strings tab is opened (see the
+                        // ViewPager callback) - never eagerly at startup.
+                        // Only exception: the tab is already on screen here,
+                        // e.g. entered via the "openTab" extra, whose tab
+                        // callback ran before the class tree existed.
+                        if (explorerViewPager.getCurrentItem() == 3 && stringList.isEmpty()) loadStrings();
+                        if (retainedView.editorVisible && retainedView.selectedTab >= 0
+                                && retainedView.selectedTab < tabs.size()) showEditor(retainedView.selectedTab);
+                        else if (openTabRequested < 0) showTreeView();
                     } catch (Exception e) {
                         handleUiThreadError(e);
                     }
@@ -2461,8 +2984,7 @@ public class DexEditorActivity extends BaseActivity {
                 showProcessingProgress(false);
                 runOnUiThread(() -> showErrorDialog(e));
             } finally {
-                ClassTree.releaseWorkDir(cachePath);
-                showProcessingProgress(false);
+                if (!isDestroyed()) showProcessingProgress(false);
             }
         }
 
@@ -2495,8 +3017,9 @@ public class DexEditorActivity extends BaseActivity {
             alertProgress.setOnCancelListener(() -> isStopped = true);
             alertProgress.show();
 
-            // Set compilation options
-            classTree.setCompilationOptions(sessionOptions);
+            // Compilation options are already live on the classTree (applied when the
+            // session started and whenever the options dialog is OKed); re-applying
+            // sessionOptions here could clobber them with stale/reset values.
 
             new Thread() {
                 @Override
@@ -2516,7 +3039,7 @@ public class DexEditorActivity extends BaseActivity {
 
                             @Override
                             public void onMessage(final String message) {
-                                if (isStopped) throw new RuntimeException("CANCELLED");
+                                if (isStopped) throw new ClassTree.SaveCancelledException();
                                 runOnUiThread(() -> alertProgress.setMessage(message));
                             }
                         });
@@ -2533,11 +3056,23 @@ public class DexEditorActivity extends BaseActivity {
                             List<String> dexPaths = getIntent().getStringArrayListExtra("SelectedDexFiles");
                             resultIntent.setData(Uri.fromFile(new File(dexPaths.get(0))));
                             resultIntent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                            setResult(757, resultIntent);
+                            // Hand the archive back with the result as well. The caller
+                            // needs it to offer the "update the APK/ZIP?" prompt, and
+                            // relying on the caller having passed it on the way in is
+                            // what made the prompt appear only on some paths.
+                            Intent launch = getIntent();
+                            if (launch != null) {
+                                String zf = launch.getStringExtra("zipFilePath");
+                                String ze = launch.getStringExtra("zipEntryPath");
+                                if (zf != null) resultIntent.putExtra("zipFilePath", zf);
+                                if (ze != null) resultIntent.putExtra("zipEntryPath", ze);
+                            }
+                            session.keepResult();
+                            setEditorResult(757, resultIntent);
                             finish();
                         });
-                    } catch (final Exception e) {
-                        if ("CANCELLED".equals(e.getMessage())) {
+                    } catch (final Throwable e) {
+                        if (e instanceof ClassTree.SaveCancelledException || "CANCELLED".equals(e.getMessage())) {
                             runOnUiThread(() -> Extensions.showMessage(DexEditorActivity.this, "Operation Cancelled"));
                             alertProgress.dismiss();
                             return;
@@ -2729,7 +3264,300 @@ public class DexEditorActivity extends BaseActivity {
         }
     }
 
-    private static class TabAdapter extends FragmentStateAdapter {
+    public void showAddClassDialog(TreeNode node) {
+        String defaultPkg = "";
+        if (node != null) {
+            String full = node.getFullName();
+            if (node.isDirectory()) {
+                defaultPkg = full.replace('/', '.');
+            } else if (node.getParent() != null && node.getParent().getFullName() != null) {
+                defaultPkg = node.getParent().getFullName().replace('/', '.');
+            } else {
+                int lastSlash = full.lastIndexOf('/');
+                if (lastSlash > 0) defaultPkg = full.substring(0, lastSlash).replace('/', '.');
+            }
+        }
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density + 0.5f);
+        layout.setPadding(pad, pad / 2, pad, 0);
+
+        TextInputLayout pkgBox = UiFields.box(this, "Package name");
+        EditText etPkg = UiFields.field(pkgBox, InputType.TYPE_CLASS_TEXT);
+        etPkg.setText(defaultPkg);
+        layout.addView(pkgBox);
+
+        LinearLayout classRow = new LinearLayout(this);
+        classRow.setOrientation(LinearLayout.HORIZONTAL);
+        classRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextInputLayout classBox = UiFields.box(this, "Class name");
+        EditText etClass = UiFields.field(classBox, InputType.TYPE_CLASS_TEXT);
+        LinearLayout.LayoutParams boxLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        classBox.setLayoutParams(boxLp);
+        classRow.addView(classBox);
+
+        ImageView browseBtn = new ImageView(this);
+        int btnPad = (int) (10 * getResources().getDisplayMetrics().density + 0.5f);
+        browseBtn.setPadding(btnPad, btnPad, btnPad, btnPad);
+        browseBtn.setImageResource(R.drawable.folder_24px);
+        TypedValue outValue = new TypedValue();
+        getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true);
+        browseBtn.setBackgroundResource(outValue.resourceId);
+        browseBtn.setContentDescription("Browse Smali");
+
+        AlertDialog[] addDialogHolder = new AlertDialog[1];
+        browseBtn.setOnClickListener(v -> {
+            FilePickerDialog.Properties props = new FilePickerDialog.Properties();
+            props.selection_type = FilePickerDialog.FILE_AND_DIR_SELECT;
+            props.selection_mode = FilePickerDialog.MULTI_MODE;
+            props.extensions = new String[]{".smali", ".zip", ".apk", ".jar"};
+            props.preferenceKey = "dex_add_browse";
+            FilePickerDialog picker = new FilePickerDialog(DexEditorActivity.this, props);
+            picker.setTitle("Select Smali File, Folder, or Zip");
+            picker.setDialogSelectionListener(files -> {
+                if (files == null || files.length == 0) return;
+                if (addDialogHolder[0] != null && addDialogHolder[0].isShowing()) {
+                    addDialogHolder[0].dismiss();
+                }
+                String currentPkg = etPkg.getText() != null ? etPkg.getText().toString().trim() : "";
+                importSmaliFiles(files, currentPkg);
+            });
+            picker.show();
+        });
+        classRow.addView(browseBtn);
+
+        layout.addView(classRow);
+
+        addDialogHolder[0] = new MaterialAlertDialogBuilder(this)
+                .setTitle("Add")
+                .setView(layout)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    String pkg = etPkg.getText() != null ? etPkg.getText().toString().trim() : "";
+                    String cls = etClass.getText() != null ? etClass.getText().toString().trim() : "";
+                    if (cls.isEmpty()) {
+                        Extensions.showMessage(this, "Class name cannot be empty");
+                        return;
+                    }
+                    if (cls.endsWith(".smali")) cls = cls.substring(0, cls.length() - 6);
+                    String fullPath = pkg.isEmpty() ? cls : pkg.replace('.', '/') + "/" + cls;
+                    createAndSaveNewClass(fullPath, cls);
+                })
+                .show();
+    }
+
+    private void createAndSaveNewClass(String fullPath, String simpleName) {
+        createAndSaveNewClass(fullPath, simpleName, null);
+    }
+
+    private void createAndSaveNewClass(String fullPath, String simpleName, String customSmali) {
+        String smali;
+        if (customSmali != null && !customSmali.trim().isEmpty()) {
+            smali = customSmali;
+        } else {
+            smali = ".class public L" + fullPath + ";\n"
+                    + ".super Ljava/lang/Object;\n"
+                    + ".source \"" + simpleName + ".java\"\n\n"
+                    + "# direct methods\n"
+                    + ".method public constructor <init>()V\n"
+                    + "    .registers 1\n\n"
+                    + "    invoke-direct {p0}, Ljava/lang/Object;-><init>()V\n"
+                    + "    return-void\n"
+                    + ".end method\n";
+        }
+        progressDialog = new AlertProgress(this);
+        progressDialog.setCancelable(false);
+        progressDialog.setCanceledOnTouchOutside(false);
+        progressDialog.setMessage("Adding class...");
+        progressDialog.show();
+        new Thread(() -> {
+            try {
+                int targetVer = dexVersion > 0 ? dexVersion : (classTree != null ? classTree.getOpenedDexVersion() : 35);
+                if (targetVer <= 0) targetVer = 35;
+                ClassDef def = Smali.assemble(smali, SharedSmaliUtils.ASSEMBLE_OPTIONS, targetVer);
+                classTree.saveClassDef(def);
+                String actualClass = fullPath;
+                String type = def.getType();
+                if (type != null && type.startsWith("L") && type.endsWith(";")) {
+                    actualClass = type.substring(1, type.length() - 1);
+                }
+                final String classToOpen = actualClass;
+                final List<TreeNode> roots = classTree.buildFullTree();
+                final List<TreeNode> modified = classTree.buildEditedFullTree();
+                runOnUiThread(() -> {
+                    treeRoots.clear();
+                    treeRoots.addAll(roots);
+                    modifiedNodes.clear();
+                    modifiedNodes.addAll(modified);
+                    needsModifiedTreeRebuild = false;
+                    needsExplorerRefresh = true;
+                    isChanged = true;
+                    refreshExplorerPage(0);
+                    refreshExplorerPage(1);
+                    tabsAdapter.notifyDataSetChanged();
+                    progressDialog.dismiss();
+                    openClass(classToOpen);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    progressDialog.dismiss();
+                    showErrorDialog(e.getMessage() != null ? e.getMessage() : e.toString());
+                });
+            }
+        }).start();
+    }
+
+    private static class ImportItem {
+        final File file;
+        final String relativePath; // e.g. "myfolder/sub/Hello" (without .smali)
+
+        ImportItem(File file, String relativePath) {
+            this.file = file;
+            this.relativePath = relativePath;
+        }
+    }
+
+    private void collectImportFiles(File f, String basePrefix, List<ImportItem> out) {
+        if (f == null || !f.exists()) return;
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) {
+                String nextPrefix = (basePrefix == null || basePrefix.isEmpty()) ? f.getName() : basePrefix + "/" + f.getName();
+                for (File child : children) {
+                    collectImportFiles(child, nextPrefix, out);
+                }
+            }
+        } else if (f.isFile()) {
+            String lower = f.getName().toLowerCase(Locale.ROOT);
+            if (lower.endsWith(".smali")) {
+                String simpleName = f.getName().substring(0, f.getName().length() - 6);
+                String rel = (basePrefix == null || basePrefix.isEmpty()) ? simpleName : basePrefix + "/" + simpleName;
+                out.add(new ImportItem(f, rel));
+            } else if (lower.endsWith(".zip") || lower.endsWith(".apk") || lower.endsWith(".jar")) {
+                try (ZipFile zf = new ZipFile(f)) {
+                    Enumeration<? extends ZipEntry> en = zf.entries();
+                    File tempDexDir = new File(getCacheDir(), "dex_import_" + System.currentTimeMillis());
+                    tempDexDir.mkdirs();
+                    while (en.hasMoreElements()) {
+                        ZipEntry ze = en.nextElement();
+                        String entryName = ze.getName();
+                        if (!ze.isDirectory() && entryName.toLowerCase(Locale.ROOT).endsWith(".smali")) {
+                            File target = new File(tempDexDir, entryName);
+                            File parent = target.getParentFile();
+                            if (parent != null && !parent.exists()) parent.mkdirs();
+                            try (InputStream is = zf.getInputStream(ze);
+                                 FileOutputStream fos = new FileOutputStream(target)) {
+                                byte[] buf = new byte[8192];
+                                int n;
+                                while ((n = is.read(buf)) != -1) {
+                                    fos.write(buf, 0, n);
+                                }
+                            }
+                            String smaliPath = entryName.substring(0, entryName.length() - 6);
+                            out.add(new ImportItem(target, smaliPath));
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
+    private void importSmaliFiles(String[] filePaths, String targetPkg) {
+        progressDialog = new AlertProgress(this);
+        progressDialog.setCancelable(false);
+        progressDialog.setCanceledOnTouchOutside(false);
+        progressDialog.setMessage("Importing...");
+        progressDialog.show();
+        new Thread(() -> {
+            int imported = 0;
+            String firstImportedClass = null;
+            String firstImportedCode = null;
+            try {
+                int targetVer = dexVersion > 0 ? dexVersion : (classTree != null ? classTree.getOpenedDexVersion() : 35);
+                if (targetVer <= 0) targetVer = 35;
+                List<ImportItem> filesToProcess = new ArrayList<>();
+                for (String path : filePaths) {
+                    collectImportFiles(new File(path), "", filesToProcess);
+                }
+                for (ImportItem item : filesToProcess) {
+                    File f = item.file;
+                    String relPath = item.relativePath;
+                    String code = FileUtil.readFile(f.getAbsolutePath());
+                    if (code == null || code.trim().isEmpty()) continue;
+
+                    String cleanPkg = targetPkg == null ? "" : targetPkg.trim();
+                    while (cleanPkg.startsWith("/")) cleanPkg = cleanPkg.substring(1).trim();
+                    while (cleanPkg.endsWith("/")) cleanPkg = cleanPkg.substring(0, cleanPkg.length() - 1).trim();
+
+                    String desiredPath;
+                    if (!cleanPkg.isEmpty()) {
+                        desiredPath = cleanPkg.replace('.', '/') + "/" + relPath;
+                    } else {
+                        desiredPath = relPath;
+                    }
+
+                    // Check existing .class definition
+                    Matcher m = Pattern.compile("(?m)^\\.class\\s+(.*?)(L[^;\\s]+;)").matcher(code);
+                    if (m.find()) {
+                        String originalType = m.group(2); // e.g. "La0;"
+                        if (!cleanPkg.isEmpty()) {
+                            String newType = "L" + desiredPath + ";";
+                            code = code.replace(originalType, newType);
+                        }
+                    } else {
+                        code = ".class public L" + desiredPath + ";\n.super Ljava/lang/Object;\n\n" + code;
+                    }
+
+                    ClassDef def = Smali.assemble(code, SharedSmaliUtils.ASSEMBLE_OPTIONS, targetVer);
+                    classTree.saveClassDef(def);
+
+                    String finalClassName = desiredPath;
+                    String type = def.getType();
+                    if (type != null && type.startsWith("L") && type.endsWith(";")) {
+                        finalClassName = type.substring(1, type.length() - 1);
+                    }
+                    classTree.getPendingSmaliMap().put(finalClassName, code);
+
+                    if (firstImportedClass == null) {
+                        firstImportedClass = finalClassName;
+                        firstImportedCode = code;
+                    }
+                    imported++;
+                }
+                final int totalImported = imported;
+                final String classToOpen = firstImportedClass;
+                final String codeToOpen = firstImportedCode;
+                final List<TreeNode> roots = classTree.buildFullTree();
+                final List<TreeNode> modified = classTree.buildEditedFullTree();
+                runOnUiThread(() -> {
+                    treeRoots.clear();
+                    treeRoots.addAll(roots);
+                    modifiedNodes.clear();
+                    modifiedNodes.addAll(modified);
+                    needsModifiedTreeRebuild = false;
+                    needsExplorerRefresh = true;
+                    isChanged = true;
+                    refreshExplorerPage(0);
+                    refreshExplorerPage(1);
+                    tabsAdapter.notifyDataSetChanged();
+                    progressDialog.dismiss();
+                    Extensions.showMessage(DexEditorActivity.this, "Imported " + totalImported + " class(es)");
+                    if (classToOpen != null) {
+                        openClass(classToOpen);
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    progressDialog.dismiss();
+                    showErrorDialog(e.getMessage() != null ? e.getMessage() : e.toString());
+                });
+            }
+        }).start();
+    }
+
+    private class TabAdapter extends FragmentStateAdapter {
         public TabAdapter(@NonNull BaseActivity activity) {
             super(activity);
         }
@@ -2787,14 +3615,13 @@ public class DexEditorActivity extends BaseActivity {
             if (position == 0) {
                 isSelected = viewPager.getVisibility() != View.VISIBLE;
                 holder.title.setText(R.string.dex_editor_plus);
-                boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-                int theme = getIntent().getIntExtra("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
-                holder.title.setTextColor(isSelected ? skyColor : theme == R.style.Theme_MyApp_Light ? Color.BLACK : Color.WHITE);
+                int onSurface = onSurfaceColor();
+                holder.title.setTextColor(isSelected ? skyColor : onSurface);
                 holder.path.setVisibility(View.GONE);
-                holder.icon.setImageResource(R.drawable.ic_home);
+                holder.icon.setImageResource(R.drawable.baseline_home_24);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    holder.icon.setImageTintList(ColorStateList.valueOf(isSelected ? skyColor : Color.BLACK));
-                } else holder.icon.setColorFilter(new LightingColorFilter(Color.BLACK, isSelected ? skyColor : Color.BLACK));
+                    holder.icon.setImageTintList(ColorStateList.valueOf(isSelected ? skyColor : onSurface));
+                } else holder.icon.setColorFilter(new LightingColorFilter(onSurface, isSelected ? skyColor : onSurface));
                 holder.mainView.setOnClickListener(v -> {
                     drawerLayout.closeDrawer(GravityCompat.START);
                     v.postDelayed(this::hideEditor, 250);
@@ -2806,9 +3633,8 @@ public class DexEditorActivity extends BaseActivity {
                 EditorTab tab = tabs.get(tabIndex);
                 isSelected = (viewPager.getVisibility() == View.VISIBLE && tabIndex == currentTabIndex);
                 holder.title.setText((tab.isModified ? "*" : "") + tab.title); // highlight the spcific edited classes with star
-                boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-                int theme = getIntent().getIntExtra("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
-                holder.title.setTextColor(isSelected ? skyColor : theme == R.style.Theme_MyApp_Light ? Color.BLACK : Color.WHITE);
+                int onSurface = onSurfaceColor();
+                holder.title.setTextColor(isSelected ? skyColor : onSurface);
 
                 holder.path.setVisibility(View.VISIBLE);
                 holder.path.setText(tab.className);
@@ -2820,8 +3646,8 @@ public class DexEditorActivity extends BaseActivity {
                     holder.icon.setImageResource(R.drawable.ic_edit_mt);
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    holder.icon.setImageTintList(ColorStateList.valueOf(isSelected ? skyColor : Color.BLACK));
-                } else holder.icon.setColorFilter(new LightingColorFilter(Color.BLACK, isSelected ? skyColor : Color.BLACK));
+                    holder.icon.setImageTintList(ColorStateList.valueOf(isSelected ? skyColor : onSurface));
+                } else holder.icon.setColorFilter(new LightingColorFilter(onSurface, isSelected ? skyColor : onSurface));
 
                 holder.mainView.setOnClickListener(v -> {
                     int currentPos = holder.getBindingAdapterPosition();
@@ -2901,12 +3727,11 @@ public class DexEditorActivity extends BaseActivity {
                     }
                 });
             }
-            if (isSelected) holder.mainView.setBackgroundColor(Color.parseColor("#E1F5FE"));
-            else {
-                TypedValue tv = new TypedValue();
-                getTheme().resolveAttribute(com.google.android.material.R.attr.colorSurface, tv, true);
-                holder.mainView.setBackgroundColor(tv.data);
-            }
+            // A soft material container tone instead of a hard-coded light blue, which
+            // vanished against a light surface and glared against a dark one.
+            holder.mainView.setBackgroundColor(isSelected
+                    ? themeColor(com.google.android.material.R.attr.colorSecondaryContainer, 0xFFD6E3F0)
+                    : surfaceColor());
         }
 
         public void closeOtherTabs(int index) {

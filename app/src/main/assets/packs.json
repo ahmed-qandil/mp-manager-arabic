@@ -2,6 +2,37 @@
     "catalogVersion":  1,
     "packs":  [
                   {
+                      "id": "ocr",
+                      "title": "OCR Pack",
+                      "description": "Open-source PaddleOCR runtime for copying text from screens and images. Language models download separately and recognition stays offline.",
+                      "category": "Text & Security",
+                      "version": 1,
+                      "versionName": "1.0",
+                      "minSdk": 24,
+                      "apkUrl": "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/download/tool-packs-v1/pack-ocr.apk",
+                      "sha256": "3c6703561e1e665c1619572566b5813102f99bfd72db59971382522aa2be9065",
+                      "abiDownloads": {
+                          "arm64-v8a": {
+                              "apkUrl": "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/download/tool-packs-v1/pack-ocr-arm64-v8a.apk",
+                              "sha256": "b1d0ee93cb88fbf86e39a4d176a5a108d5682b82df9caf8a8529694e67ca80f3"
+                          },
+                          "armeabi-v7a": {
+                              "apkUrl": "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/download/tool-packs-v1/pack-ocr-armeabi-v7a.apk",
+                              "sha256": "5710a89a87d9f341e40044d44b148ca5b349ac4c28d7f47f29bdec3176148bd1"
+                          },
+                          "x86_64": {
+                              "apkUrl": "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/download/tool-packs-v1/pack-ocr-x86_64.apk",
+                              "sha256": "4b7ded4ac66d3e1d2f0c23d3bd64c99f799f29bf68c0db7c35e52c2604a87578"
+                          },
+                          "x86": {
+                              "apkUrl": "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/download/tool-packs-v1/pack-ocr-x86.apk",
+                              "sha256": "1fe80369de46513d8cd9cc7bf5b2d8dd6db5c64c3c87a92276cf928870b0e31b"
+                          }
+                      },
+                      "entryClass": "io.github.abdurazaaqmohammed.packs.ocr.OcrPack",
+                      "tools": [{"id": "screen_ocr", "title": "Copy text on screen", "subtitle": "Offline OCR for screens and images"}]
+                  },
+                  {
                       "id":  "media",
                       "title":  "Media Pack",
                       "description":  "Tone generator, metronome, recorder and text to speech.",
@@ -39,8 +70,8 @@
                       "title":  "Device Pack",
                       "description":  "Timers, sensors, hub, ringtones and wallpapers.",
                       "category":  "Device \u0026 Hardware",
-                      "version":  2,
-                      "versionName":  "1.1",
+                      "version":  1,
+                      "versionName":  "1.0",
                       "apkUrl":  "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/download/tool-packs-v1/pack-device.apk",
                       "sha256":  "00a9a266aa0d40cc2bce67b378d0f9a291915147706ce104177ae8f293eb365b",
                       "entryClass":  "io.github.abdurazaaqmohammed.packs.device.DevicePack",
@@ -102,8 +133,8 @@
                       "title":  "Network Pack",
                       "description":  "Connectivity hub and QR generator in one suite.",
                       "category":  "Wi-Fi \u0026 Network",
-                      "version":  2,
-                      "versionName":  "1.1",
+                      "version":  1,
+                      "versionName":  "1.0",
                       "apkUrl":  "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/download/tool-packs-v1/pack-network.apk",
                       "sha256":  "8feb423650c7127adc5487915563c3e14877375b95abf9711060d359cdaaa7a9",
                       "entryClass":  "io.github.abdurazaaqmohammed.packs.network.NetworkPack",
@@ -120,8 +151,8 @@
                       "title":  "Math Pack",
                       "description":  "Calculator suite with finance, converters, algebra, general tools.",
                       "category":  "Math \u0026 Finance",
-                      "version":  5,
-                      "versionName":  "1.5",
+                      "version":  1,
+                      "versionName":  "1.0",
                       "apkUrl":  "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/download/tool-packs-v1/pack-math.apk",
                       "sha256":  "6ea88cda349e1c717e0fe397e4bc6a0c862a30e8e7e14b7fd1e8d05657fa1416",
                       "entryClass":  "io.github.abdurazaaqmohammed.packs.math.MathPack",

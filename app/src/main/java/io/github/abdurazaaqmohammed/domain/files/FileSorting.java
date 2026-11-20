@@ -1,9 +1,27 @@
 package io.github.abdurazaaqmohammed.domain.files;
 
+import android.content.Context;
+
+import io.github.abdurazaaqmohammed.feature.files.network.RemoteFile;
+import io.github.abdurazaaqmohammed.feature.ftp.FTPFileWrapper;
+import io.github.abdurazaaqmohammed.privilege.api.PrivilegeManager;
+
+import io.github.abdurazaaqmohammed.privilege.impl.NativeRootManager;
+
+import io.github.abdurazaaqmohammed.util.io.FileUtils;
+
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import io.github.abdurazaaqmohammed.data.prefs.DirSizeCache;
 
 /**
  * Pure file-listing sort logic extracted from MainActivity.
@@ -80,30 +98,248 @@ public final class FileSorting {
     }
 
     public static void sortFiles(File[] files, int sortBy, boolean reverse) {
-        if (files == null) return;
-        Arrays.sort(files, (f1, f2) -> {
+        if (files == null || files.length < 2) return;
+        // Reading isDirectory()/length()/lastModified() inside the comparator cost
+        // O(n log n) stat syscalls per folder load, which is what made listings
+        // such as /vendor feel slow. Read each value once, then sort.
+        int n = files.length;
+        final long[] sizes = new long[n];
+        final long[] times = new long[n];
+        final boolean[] dirs = new boolean[n];
+        final String[] names = new String[n];
+        final String[] exts = new String[n];
+        boolean needSizes = sortBy == SORT_SIZE;
+        boolean needTimes = sortBy == SORT_DATE;
+        boolean needExts = sortBy == SORT_TYPE;
+        for (int i = 0; i < n; i++) {
+            File f = files[i];
+            if (f == null) {
+                names[i] = "";
+                exts[i] = "";
+                continue;
+            }
+            names[i] = f.getName();
+            try {
+                dirs[i] = f.isDirectory();
+            } catch (Exception ignored) {
+            }
+            if (needExts) exts[i] = getExt(names[i]);
+            if (!dirs[i] || needTimes) {
+                try {
+                    times[i] = f.lastModified();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        // Size sorting needs real folder sizes, which means walking whole trees.
+        // Each measured folder goes into the persistent DirSizeCache (validated
+        // against the folder's own mtime), so revisits and later app starts skip
+        // the walk; only never-measured or changed folders are walked, in
+        // parallel, before the actual sort.
+        if (needSizes) {
+            List<File> dirsToSize = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                if (files[i] instanceof RemoteFile
+                        || files[i] instanceof FTPFileWrapper) {
+                    sizes[i] = dirs[i] ? 0 : files[i].length(); // No recursive network walks or fake local-path stats.
+                } else if (dirs[i]) {
+                    Long cached = DirSizeCache.peek(files[i]);
+                    if (cached != null) {
+                        sizes[i] = cached;
+                        continue;
+                    }
+                    Long memory = DIR_SIZE_CACHE.get(pathOf(files[i]));
+                    if (memory != null) {
+                        sizes[i] = memory;
+                        DirSizeCache.record(files[i], memory);
+                        continue;
+                    }
+                    dirsToSize.add(files[i]);
+                } else {
+                    try {
+                        sizes[i] = files[i].length();
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+            computeSizesParallel(dirsToSize);
+            for (int i = 0; i < n; i++) {
+                if (dirs[i] && !(files[i] instanceof RemoteFile)
+                        && !(files[i] instanceof FTPFileWrapper)) sizes[i] = dirSize(files[i]);
+            }
+            if (!dirsToSize.isEmpty()) DirSizeCache.scheduleSave();
+        }
+        Integer[] order = new Integer[n];
+        for (int i = 0; i < n; i++) order[i] = i;
+        Arrays.sort(order, (a, b) -> {
+            int ia = a;
+            int ib = b;
             int result;
             switch (sortBy) {
                 case SORT_SIZE:
-                    result = Long.compare(f1.length(), f2.length());
+                    result = Long.compare(sizes[ia], sizes[ib]);
+                    if (result == 0) result = compareNaturalIgnoreCase(names[ia], names[ib]);
                     break;
                 case SORT_DATE:
-                    result = Long.compare(f1.lastModified(), f2.lastModified());
+                    result = Long.compare(times[ia], times[ib]);
+                    if (result == 0) result = compareNaturalIgnoreCase(names[ia], names[ib]);
                     break;
                 case SORT_TYPE:
-                    String ext1 = getExt(f1.getName());
-                    String ext2 = getExt(f2.getName());
-                    result = ext1.compareToIgnoreCase(ext2);
-                    if (result == 0) result = compareNaturalIgnoreCase(f1.getName(), f2.getName());
+                    result = exts[ia].compareToIgnoreCase(exts[ib]);
+                    if (result == 0) result = compareNaturalIgnoreCase(names[ia], names[ib]);
                     break;
                 default:
-                    result = compareNaturalIgnoreCase(f1.getName(), f2.getName());
+                    result = compareNaturalIgnoreCase(names[ia], names[ib]);
                     break;
             }
-            if (f1.isDirectory() && !f2.isDirectory()) return -1;
-            if (!f1.isDirectory() && f2.isDirectory()) return 1;
+            if (dirs[ia] && !dirs[ib]) return -1;
+            if (!dirs[ia] && dirs[ib]) return 1;
             return reverse ? -result : result;
         });
+        File[] sorted = new File[n];
+        for (int i = 0; i < n; i++) sorted[i] = files[order[i]];
+        System.arraycopy(sorted, 0, files, 0, n);
+    }
+
+    private static final ConcurrentHashMap<String, Long> DIR_SIZE_CACHE =
+            new ConcurrentHashMap<>();
+    private static final ExecutorService SIZE_POOL =
+            Executors.newFixedThreadPool(
+                    Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors())));
+
+    private static boolean isVirtualOrSpecialFs(String path) {
+        if (path == null || path.isEmpty()) return false;
+        return path.equals("/proc") || path.startsWith("/proc/")
+                || path.equals("/sys") || path.startsWith("/sys/")
+                || path.equals("/dev") || path.startsWith("/dev/")
+                || path.equals("/acct") || path.startsWith("/acct/")
+                || path.equals("/config") || path.startsWith("/config/")
+                || path.equals("/d") || path.startsWith("/d/")
+                || path.equals("/linkerconfig") || path.startsWith("/linkerconfig/")
+                || path.equals("/data_mirror") || path.startsWith("/data_mirror/");
+    }
+
+    /** Walks every uncached sibling folder in parallel so a size sort stays responsive. */
+    private static void computeSizesParallel(List<File> dirs) {
+        if (dirs == null || dirs.isEmpty()) return;
+        Context ctx = DirSizeCache.getContext();
+        // If folders are unreadable by regular app UID (e.g. /data/media/0 or system dirs),
+        // try fast batch du via root/Shizuku first so the entire directory tree is measured in one shot.
+        if (ctx != null) {
+            // Root mode: measure all sibling directories with one mpio process,
+            // including app-readable system folders, before any Java walk.
+            if (PrivilegeManager.Files.active(ctx)
+                    == PrivilegeManager.Backend.ROOT) {
+                List<String> paths = new ArrayList<>();
+                for (File d : dirs) if (d != null && !isVirtualOrSpecialFs(pathOf(d))) paths.add(pathOf(d));
+                Map<String, Long> nativeSizes = NativeRootManager.sizes(ctx, paths, 30_000);
+                DirSizeCache.recordBatch(nativeSizes);
+                DIR_SIZE_CACHE.putAll(nativeSizes);
+            }
+            for (File d : dirs) {
+                if (d != null && !DIR_SIZE_CACHE.containsKey(pathOf(d)) && !d.canRead()) {
+                    File parent = d.getParentFile();
+                    if (parent != null) {
+                        try {
+                            Map<String, Long> tree = PrivilegeManager.Files.dirSizeTree(ctx, parent.getAbsolutePath());
+                            if (tree != null && !tree.isEmpty()) {
+                                DirSizeCache.recordBatch(tree);
+                                for (Map.Entry<String, Long> entry : tree.entrySet()) {
+                                    if (entry.getKey() != null && entry.getValue() != null) {
+                                        DIR_SIZE_CACHE.put(entry.getKey(), entry.getValue());
+                                    }
+                                }
+                            }
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        List<Future<?>> futures = new ArrayList<>();
+        for (File d : dirs) {
+            if (d == null) continue;
+            String p = pathOf(d);
+            if (isVirtualOrSpecialFs(p)) continue;
+            if (DIR_SIZE_CACHE.containsKey(p)) continue;
+            futures.add(SIZE_POOL.submit(() -> recursiveSize(d)));
+        }
+        for (Future<?> f : futures) {
+            try {
+                f.get();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** Recursively sums a folder's contents; every visited folder is cached so
+     * one walk of a deep tree also covers all of its sub-folders. */
+    private static long recursiveSize(File dir) {
+        if (dir == null) return 0;
+        String key = pathOf(dir);
+        if (key == null) return 0;
+        if (isVirtualOrSpecialFs(key)) return 0;
+        Long cached = DIR_SIZE_CACHE.get(key);
+        if (cached != null) return cached;
+        Long persisted = DirSizeCache.peek(dir);
+        if (persisted != null) {
+            DIR_SIZE_CACHE.put(key, persisted);
+            return persisted;
+        }
+
+        // Check if unreadable by standard Java IO and query elevated AccessManager
+        if (!dir.canRead()) {
+            Context ctx = DirSizeCache.getContext();
+            if (ctx != null) {
+                try {
+                    long du = PrivilegeManager.Files.dirSize(ctx, key);
+                    if (du >= 0) {
+                        DIR_SIZE_CACHE.put(key, du);
+                        DirSizeCache.record(dir, du);
+                        return du;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        long total = 0;
+        File[] children = dir.listFiles();
+        if (children == null) return -1;
+        if (children != null) {
+            for (File c : children) {
+                if (c == null) continue;
+                try {
+                    if (FileUtils.isSymlink(c)) continue;
+                    long size = c.isDirectory() ? recursiveSize(c) : c.length();
+                    if (size < 0) return -1;
+                    total += size;
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        DIR_SIZE_CACHE.put(key, total);
+        DirSizeCache.record(dir, total);
+        return total;
+    }
+
+    private static String pathOf(File f) {
+        try {
+            return f.getAbsolutePath();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static long dirSize(File dir) {
+        if (dir == null) return 0;
+        String key = pathOf(dir);
+        if (key == null) return 0;
+        Long cached = DIR_SIZE_CACHE.get(key);
+        if (cached != null) return cached;
+        return recursiveSize(dir);
     }
 
     public static void sortZipEntries(List<ZipEntryInfo> entries, String folderPath, int sortBy, boolean reverse) {
