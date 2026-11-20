@@ -1,0 +1,113 @@
+name: smoke-test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Download ar4 APK and test-sign a copy (release asset stays unsigned)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release download v1.1.2-ar4 -p 'MP-Manager-1.1.2-ar4-universal-unsigned.apk' --clobber
+          cp MP-Manager-1.1.2-ar4-universal-unsigned.apk app-test.apk
+          keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+          APKSIGNER=$(ls "$ANDROID_HOME/build-tools/"*/apksigner | sort -V | tail -n1)
+          "$APKSIGNER" sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android app-test.apk
+          "$APKSIGNER" verify --print-certs app-test.apk | head -3
+          echo "original untouched:"
+          sha256sum MP-Manager-1.1.2-ar4-universal-unsigned.apk
+
+      - name: Write UI test helper
+        run: |
+          cat > tap_by_text.py <<'PY'
+          import sys, re, xml.etree.ElementTree as ET
+          target = sys.argv[2].lower()
+          for node in ET.parse(sys.argv[1]).iter('node'):
+              for attr in ('text', 'content-desc', 'resource-id'):
+                  v = (node.get(attr) or '').lower()
+                  if target in v and node.get('enabled') != 'false':
+                      m = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.get('bounds'))
+                      l, t, r, b = map(int, m.groups())
+                      print((l + r) // 2, (t + b) // 2)
+                      sys.exit(0)
+          sys.exit(1)
+          PY
+          sed -i 's/^  //' tap_by_text.py
+
+      - name: Run emulator smoke test
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: |
+            set -x
+            adb shell 'while [ -z "$(getprop sys.boot_completed)" ]; do sleep 5; done'
+            adb shell settings put global window_animation_scale 0
+            adb shell settings put global transition_animation_scale 0
+            adb shell settings put global animator_duration_scale 0
+            adb shell mkdir -p /sdcard/MPTest/TestFolder /sdcard/MPTest/مجلد_تجربة
+            adb shell touch /sdcard/MPTest/TestFolder/hello.txt /sdcard/MPTest/readme.txt
+            adb install -g app-test.apk
+            adb shell appops set io.github.abdurazaaqmohammed.MPManager MANAGE_EXTERNAL_STORAGE allow || true
+            adb shell monkey -p io.github.abdurazaaqmohammed.MPManager -c android.intent.category.LAUNCHER 1
+            sleep 10
+            dump() { adb shell uiautomator dump /sdcard/dump.xml >/dev/null 2>&1; adb pull /sdcard/dump.xml "$1" >/dev/null 2>&1; }
+            shot() { adb exec-out screencap -p > "$1"; }
+            tap() { C=$(python3 tap_by_text.py "$1" "$2") && adb shell input tap $C && sleep 3; }
+            dump d1.xml; shot s1_launch.png
+            # permission / first-run dialogs: tap allow-ish buttons up to 3 times
+            for i in 1 2 3; do
+              dump dx.xml
+              if grep -qiE 'allow|permit|سماح|السماح' dx.xml; then
+                tap dx.xml "allow" || tap dx.xml "سماح" || true
+              else break; fi
+            done
+            dump d2_main.xml; shot s2_main.png
+            # count rows with combined content-desc (A11yRow)
+            echo "rows with content-desc:"; grep -o 'content-desc="[^"]*"' d2_main.xml | head -20
+            # try to open our seeded folder
+            tap d2_main.xml "MPTest" || true
+            dump d3_folder.xml; shot s3_folder.png
+            grep -o 'content-desc="[^"]*"' d3_folder.xml | head -20 || true
+            # open settings -> language -> Arabic
+            dump d4.xml
+            tap d4.xml "Settings" || tap d4.xml "الإعدادات" || tap d4.xml "settings" || true
+            dump d5.xml; shot s5_settings.png
+            tap d5.xml "Language" || tap d5.xml "اللغة" || true
+            dump d6.xml; shot s6_langdialog.png
+            tap d6.xml "العربية" || true
+            sleep 2
+            adb shell input keyevent 4
+            sleep 2
+            dump d7_arabic.xml; shot s7_arabic.png
+            echo "arabic strings found in main UI:"; grep -oE 'text="[^"]*[ء-ي][^"]*"' d7_arabic.xml | head -15 || true
+            echo "a11y parent folder label:"; grep -o 'content-desc="[^"]*المجلد الأب[^"]*"' d7_arabic.xml | head -5 || true
+            adb shell dumpsys activity top | grep -m3 'ACTIVITY' || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: |
+            s*.png
+            d*.xml
+          retention-days: 30
