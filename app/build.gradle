@@ -13,7 +13,7 @@ android {
         targetSdk 37
         multiDexEnabled true
         versionCode 13
-        versionName "1.1.2-ar3"
+        versionName "1.1.2-ar4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -35,7 +35,7 @@ android {
             }
         }
         release {
-            signingConfig signingConfigs.release
+            // Unsigned: the user signs APKs himself (custom build rule).
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
