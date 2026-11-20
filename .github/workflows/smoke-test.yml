@@ -53,11 +53,13 @@ jobs:
 
       - name: Run emulator smoke test
         uses: ReactiveCircus/android-emulator-runner@v2
+        env:
+          ANDROID_I_WANT_MY_TCG: yes
         with:
           api-level: 30
           arch: x86_64
           target: google_apis
-          emulator-boot-timeout: 1200
+          emulator-boot-timeout: 2400
           cores: 4
           ram-size: 4096M
           heap-size: 512M
